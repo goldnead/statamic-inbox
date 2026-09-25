@@ -4,6 +4,7 @@ namespace Goldnead\StatamicInbox\Tests;
 
 use Goldnead\StatamicInbox\ServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Statamic\Facades\CP\Nav;
 use Statamic\Testing\AddonTestCase;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
@@ -19,12 +20,25 @@ abstract class TestCase extends AddonTestCase
     {
         parent::setUp();
 
+        // The fixtures are dated 20 to 24 September 2026.
+        Carbon::setTestNow(Carbon::parse('2026-09-25 12:00:00', 'UTC'));
+
+        // Role and user permissions need the pro edition.
+        config()->set('statamic.editions.pro', true);
+
         // AddonTestCase swaps Nav for a strict mock; let bootAddon() extend it.
         Nav::shouldReceive('extend')->andReturnNull();
 
         // Statamic runs bootAddon() inside a booted callback Testbench never
         // fires; run it the way that callback would.
         $this->app->getProvider(ServiceProvider::class)?->bootAddon();
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     /**

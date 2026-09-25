@@ -20,6 +20,10 @@ return [
         // Same counterpart, same normalised subject, within this many days:
         // the third and last threading rule before a new conversation opens.
         'subject_match_days' => 30,
+
+        // How long one mailbox's lock may be held before a crashed run is
+        // assumed dead and the mailbox is fetched again.
+        'lock_seconds' => 900,
     ],
 
     /*
@@ -63,7 +67,10 @@ return [
 
     'ai' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
-        'model' => env('INBOX_AI_MODEL', 'claude-sonnet-4-5'),
+        'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+        'model' => env('INBOX_AI_MODEL', 'claude-opus-5'),
+        'max_tokens' => 1024,
+        'timeout' => 60,
         'style_prompt' => null,
     ],
 
@@ -72,5 +79,42 @@ return [
     'default_mailbox' => null,
 
     'queue' => env('INBOX_QUEUE', 'default'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Provider presets
+    |--------------------------------------------------------------------------
+    |
+    | What the mailbox form fills in when a provider is picked. `help` links to
+    | the provider's own instructions for creating an app password.
+    |
+    */
+
+    'presets' => [
+        'google' => [
+            'label' => 'Google Workspace / Gmail',
+            'imap_host' => 'imap.gmail.com', 'imap_port' => 993, 'imap_encryption' => 'ssl',
+            'smtp_host' => 'smtp.gmail.com', 'smtp_port' => 587, 'smtp_encryption' => 'tls',
+            'help' => 'https://support.google.com/accounts/answer/185833',
+        ],
+        'migadu' => [
+            'label' => 'Migadu',
+            'imap_host' => 'imap.migadu.com', 'imap_port' => 993, 'imap_encryption' => 'ssl',
+            'smtp_host' => 'smtp.migadu.com', 'smtp_port' => 465, 'smtp_encryption' => 'ssl',
+            'help' => 'https://migadu.com/guides/imap/',
+        ],
+        'manitu' => [
+            'label' => 'manitu',
+            'imap_host' => 'imap.manitu.de', 'imap_port' => 993, 'imap_encryption' => 'ssl',
+            'smtp_host' => 'smtp.manitu.de', 'smtp_port' => 587, 'smtp_encryption' => 'tls',
+            'help' => 'https://www.manitu.de/webhosting/faq/',
+        ],
+        'all-inkl' => [
+            'label' => 'All-Inkl',
+            'imap_host' => '', 'imap_port' => 993, 'imap_encryption' => 'ssl',
+            'smtp_host' => '', 'smtp_port' => 465, 'smtp_encryption' => 'ssl',
+            'help' => 'https://all-inkl.com/wichtig/anleitungen/',
+        ],
+    ],
 
 ];

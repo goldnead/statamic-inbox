@@ -20,7 +20,7 @@ parameters:
     ignoreErrors:
         -
             identifier: class.notFound
-            message: '#Goldnead\\(EmailTemplates|Activity|StatamicAutomations)\\#'
+            message: '#Goldnead\\(EmailTemplates|Activity|IdentityContracts|StatamicAutomations)\\#'
 
         # Larastan only knows the host app's config directory; this is the
         # package's own, where env() is exactly right.

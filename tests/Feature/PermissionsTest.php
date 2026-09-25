@@ -83,7 +83,7 @@ it('allows the route with its permission', function (string $permission, Closure
     // `reply inbox` is a child of `view inbox` in the CP, so it never comes alone.
     $permissions = $permission === 'reply inbox' ? ['view inbox', 'reply inbox'] : [$permission];
 
-    $status = $this->actingAs(inboxCpUser($permissions))->json($method, $uri, $data)->status();
+    $status = $this->actingAs(inboxCpUser($permissions))->json($method, $uri, $data)->baseResponse->getStatusCode();
 
     expect($status)->toBeGreaterThanOrEqual(200)->toBeLessThan(400);
 })->with('inbox routes');

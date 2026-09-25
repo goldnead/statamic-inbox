@@ -132,6 +132,37 @@ it('does not APPEND on Gmail, which files SMTP mail into Sent by itself', functi
         ->and($this->smtp->transport->messages())->toHaveCount(1);
 });
 
+/*
+ * Found in the first test against a real Google Workspace mailbox (25.09.2026):
+ * the reply went out as From: "info@ (Echttest)" <info@…>. The mailbox name is
+ * the label in the CP list ("Coaching"), not what a customer should read.
+ */
+it('sends under the sender name, never under the mailbox label', function () {
+    $mailbox = inboxMailbox(['name' => 'Coaching (intern)', 'from_name' => 'Adrian Goldner']);
+    $conversation = threadWithAnna($this->imap, $mailbox);
+
+    app(ReplySender::class)->send($conversation, 'Bis Dienstag!');
+
+    $from = onlySent($this->smtp)->getOriginalMessage()->getFrom()[0];
+
+    expect($from->getName())->toBe('Adrian Goldner')
+        ->and(Message::where('direction', 'out')->latest('id')->first()->from_name)->toBe('Adrian Goldner');
+});
+
+it('falls back to the brand sender name, and to the bare address, but not to the label', function () {
+    $mailbox = inboxMailbox(['name' => 'Coaching (intern)']);
+    $conversation = threadWithAnna($this->imap, $mailbox);
+
+    app(ReplySender::class)->send($conversation, 'Bis Dienstag!');
+
+    $from = onlySent($this->smtp)->getOriginalMessage()->getFrom()[0];
+    $brandName = app(Goldnead\BrandContext\Contracts\SenderIdentityResolver::class)->resolve(null)->fromName;
+
+    expect($from->getAddress())->toBe('adrian@goldner.test')
+        ->and($from->getName())->not->toBe('Coaching (intern)')
+        ->and($from->getName())->toBe((string) $brandName);
+});
+
 it('lets a mailbox switch APPEND off by hand', function () {
     $mailbox = inboxMailbox(['append_sent' => false]);
 

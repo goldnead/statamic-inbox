@@ -58,6 +58,15 @@ it('detects the Sent folder on the server when the form leaves it empty', functi
         ->and(Mailbox::sole()->password)->toBe('another-app-pass');
 });
 
+it('stores the sender name the form gives, separate from the list label', function () {
+    $this->actingAs(inboxCpUser(['manage inbox mailboxes']))
+        ->postJson('/cp/inbox/mailboxes', mailboxForm(['name' => 'Chor intern', 'from_name' => 'Adrian Goldner']))
+        ->assertSuccessful();
+
+    expect(Mailbox::sole()->from_name)->toBe('Adrian Goldner')
+        ->and(Mailbox::sole()->name)->toBe('Chor intern');
+});
+
 it('keeps a Sent folder the form names', function () {
     $this->actingAs(inboxCpUser(['manage inbox mailboxes']))
         ->postJson('/cp/inbox/mailboxes', mailboxForm(['sent_folder' => 'INBOX.Sent']))

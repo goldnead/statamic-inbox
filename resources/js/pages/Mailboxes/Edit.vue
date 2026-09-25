@@ -21,6 +21,7 @@ import {
     Button,
     Card,
     CommandPaletteItem,
+    ConfirmationModal,
     DatePicker,
     Description,
     Field,
@@ -67,8 +68,10 @@ const props = defineProps({
 
 // ── Filter: hidden senders and domains ──────────────────────────────────
 const blockRules = ref([...props.rules]);
+const pendingRule = ref(null);
 
 async function removeRule(rule) {
+    pendingRule.value = null;
     try {
         await axios.delete(rule.delete_url);
         blockRules.value = blockRules.value.filter((r) => r.id !== rule.id);
@@ -550,15 +553,25 @@ function onThisPage(problem) {
                                 :data-inbox-rule="rule.value"
                             >
                                 <span class="flex min-w-0 items-center gap-2">
-                                    <Badge pill :text="rule.type === 'domain' ? __('Domain') : __('Sender')" />
+                                    <Badge pill :text="rule.type === 'domain' ? __('Domain') : __('One sender')" />
                                     <span class="truncate font-mono text-sm">{{ rule.value }}</span>
                                 </span>
-                                <Button size="sm" variant="ghost" icon="trash" :text="__('Remove')" @click="removeRule(rule)" />
+                                <Button size="sm" variant="ghost" icon="trash" :text="__('Remove')" @click="pendingRule = rule" />
                             </li>
                         </ul>
                     </Card>
                 </Panel>
             </TabContent>
         </Tabs>
+
+        <ConfirmationModal
+            :open="pendingRule !== null"
+            :title="__('Remove rule?')"
+            :body-text="__('Mail from :value arrives here again from now on.', { value: pendingRule?.value ?? '' })"
+            :button-text="__('Remove')"
+            @update:open="!$event && (pendingRule = null)"
+            @confirm="removeRule(pendingRule)"
+            @cancel="pendingRule = null"
+        />
     </div>
 </template>

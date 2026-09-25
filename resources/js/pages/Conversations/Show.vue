@@ -243,7 +243,7 @@ function reloadThread() {
 
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div class="min-w-0 space-y-6">
-                <Alert v-if="isNew" variant="info" data-inbox-first-contact>
+                <Alert v-if="isNew" variant="default" icon="info" data-inbox-first-contact>
                     <Heading :text="__('A first contact')" />
                     <p class="mt-1 text-sm">
                         {{ __('You have not written to :address before, and the address is not a contact. Take the conversation over, create a contact, or hide the sender.', { address: state.counterpart_email }) }}

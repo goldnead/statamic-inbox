@@ -209,6 +209,10 @@ describe('Mailboxes/Edit', () => {
 
         await wrapper.find('[data-inbox-rule="spam.example"] [data-attr-text="Remove"]').trigger('click');
         await flushPromises();
+        expect(axios.delete).not.toHaveBeenCalled();
+
+        await wrapper.find('[data-confirm]').trigger('click');
+        await flushPromises();
 
         expect(axios.delete).toHaveBeenCalledWith('/m/1/rules/3');
         expect(wrapper.find('[data-inbox-rule="spam.example"]').exists()).toBe(false);

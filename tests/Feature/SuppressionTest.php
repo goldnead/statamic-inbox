@@ -1,9 +1,10 @@
 <?php
 
 /*
- * Spec test 5: a direct reply is refused on a hard bounce or a complaint,
- * not for any other entry on the suppression list, and the check fails
- * closed: when the list cannot be read, nothing goes out.
+ * Spec test 5: a direct reply is refused on a hard bounce, a complaint or an
+ * address known to be invalid (decided 25.09.2026), not for any other entry
+ * on the suppression list, and the check fails closed: when the list cannot
+ * be read, nothing goes out.
  *
  * Someone who writes to you has not objected to an answer. A newsletter
  * opt-out never reaches statamic-suppression at all (it lives in marketing's
@@ -47,6 +48,24 @@ it('refuses a reply to an address that complained', function () {
         ->toThrow(ReplyRefused::class);
 
     expect($this->smtp->transport->messages())->toHaveCount(0);
+});
+
+it('refuses a reply to an address known to be invalid', function () {
+    Suppression::suppress('anna.beispiel@example.com', Reasons::INVALID_EMAIL);
+
+    expect(fn () => app(ReplySender::class)->send($this->conversation, 'Hallo Anna'))
+        ->toThrow(ReplyRefused::class);
+
+    expect($this->smtp->transport->messages())->toHaveCount(0);
+});
+
+it('sends again once the suppression is released', function () {
+    Suppression::suppress('anna.beispiel@example.com', Reasons::HARD_BOUNCE);
+    Suppression::release('anna.beispiel@example.com', ['actor' => 'test']);
+
+    app(ReplySender::class)->send($this->conversation, 'Hallo Anna');
+
+    expect($this->smtp->transport->messages())->toHaveCount(1);
 });
 
 it('matches the suppressed address regardless of case', function () {

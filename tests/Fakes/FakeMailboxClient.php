@@ -27,6 +27,9 @@ class FakeMailboxClient implements MailboxClient
 
     public ?Throwable $failure = null;
 
+    /** What the server would report as its `\Sent` folder. */
+    public ?string $sentFolder = null;
+
     /** Put a raw message into a folder, as a delivery would. Returns its UID. */
     public function deliver(string $folder, string $raw): int
     {
@@ -83,6 +86,18 @@ class FakeMailboxClient implements MailboxClient
 
         $this->appended[] = ['folder' => $folder, 'raw' => $raw, 'flags' => $flags];
         $this->deliver($folder, $raw);
+    }
+
+    public function detectSentFolder(): ?string
+    {
+        $this->guard('detectSentFolder', '');
+
+        return $this->sentFolder;
+    }
+
+    public function check(): void
+    {
+        $this->guard('check', '');
     }
 
     protected function guard(string $method, string $folder): void

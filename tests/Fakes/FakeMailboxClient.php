@@ -168,6 +168,30 @@ class FakeMailboxClient implements MailboxClient
         return $this->sentFolder;
     }
 
+    /** What the server would report as its `\All` folder (Gmail's All Mail). */
+    public ?string $allMailFolder = null;
+
+    public function detectAllMailFolder(): ?string
+    {
+        $this->guard('detectAllMailFolder', '');
+
+        return $this->allMailFolder;
+    }
+
+    /** UID SEARCH HEADER Message-ID, as the real client asks it. */
+    public function findUid(string $folder, string $messageId): ?int
+    {
+        $this->guard('findUid', $folder);
+
+        foreach ($this->folders[$folder] ?? [] as $uid => $raw) {
+            if (preg_match('/^Message-ID:\s*<?'.preg_quote(trim($messageId, '<>'), '/').'>?\s*$/mi', $raw)) {
+                return $uid;
+            }
+        }
+
+        return null;
+    }
+
     public function check(): void
     {
         $this->guard('check', '');

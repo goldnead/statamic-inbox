@@ -1,0 +1,36 @@
+Return-Path: <anna.beispiel@example.com>
+MIME-Version: 1.0
+Date: Thu, 24 Sep 2026 18:00:00 +0200
+Message-ID: <CAanna009+inline@mail.gmail.com>
+Subject: Foto vom Konzert
+From: Anna Beispiel <anna.beispiel@example.com>
+To: adrian@goldner.test
+Content-Type: multipart/mixed; boundary="mixed_009"
+
+--mixed_009
+Content-Type: multipart/related; boundary="related_009"
+
+--related_009
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+
+<p>Hier das Foto:</p><p><img src="cid:foto@anna.example" alt="Foto"></p>
+
+--related_009
+Content-Type: image/png; name="foto.png"
+Content-Transfer-Encoding: base64
+Content-ID: <foto@anna.example>
+Content-Disposition: inline; filename="foto.png"
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
+
+--related_009--
+
+--mixed_009
+Content-Type: application/pdf; name="noten.pdf"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="noten.pdf"
+
+JVBERi0xLjQKJSBmYWtlCg==
+
+--mixed_009--

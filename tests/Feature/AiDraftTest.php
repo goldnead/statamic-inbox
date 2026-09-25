@@ -77,7 +77,7 @@ it('sends the thread, the contact, the style and the instruction to the Messages
 });
 
 it('defaults to the current Claude model', function () {
-    expect(config('inbox.ai.model'))->toBe('claude-opus-5');
+    expect(config('inbox.ai.model'))->toBe('claude-sonnet-5');
 });
 
 it('refuses without an API key, without calling anything', function () {

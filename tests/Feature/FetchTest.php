@@ -149,6 +149,38 @@ it('ends a snooze when a new incoming message arrives', function () {
         ->and($conversation->unread)->toBeTrue();
 });
 
+it('clamps a Date header from the future to now, so it cannot sit on top forever', function () {
+    $raw = preg_replace('/^Date: .*$/m', 'Date: Sat, 01 Jan 2033 10:00:00 +0100', mailFixture('06-same-subject-other-sender.eml'));
+    $this->imap->client($this->mailbox)->deliver('INBOX', $raw);
+
+    app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
+
+    expect(Message::sole()->sent_at->lessThanOrEqualTo(Carbon::now()))->toBeTrue()
+        ->and(Conversation::sole()->last_message_at->lessThanOrEqualTo(Carbon::now()))->toBeTrue();
+});
+
+it('stores UIDVALIDITY per folder and starts over, without duplicates, when it changes', function () {
+    $client = deliverAndFetch($this->imap, $this->mailbox, [
+        'INBOX' => ['01-new-thread.eml', '03-gmail-reply.eml'],
+    ]);
+
+    expect($this->mailbox->fresh()->uidvalidity_inbox)->toBe(1)
+        ->and($this->mailbox->fresh()->last_uid_inbox)->toBe(2);
+
+    // The server rebuilt the folder: same mails, UIDs from 1 again, plus a new one at 3.
+    $client->renumber('INBOX', 777);
+    $client->deliver('INBOX', mailFixture('05-subject-match.eml'));
+
+    app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
+
+    $mailbox = $this->mailbox->fresh();
+
+    expect($mailbox->uidvalidity_inbox)->toBe(777)
+        ->and($mailbox->last_uid_inbox)->toBe(3)
+        ->and(Message::count())->toBe(3)
+        ->and(Message::where('message_id', '1a2b3c4d-5e6f-4a1b-9c8d-7e6f5a4b3c2d@outlook.example.com')->exists())->toBeTrue();
+});
+
 it('imports the last 90 days on a first fetch by default', function () {
     expect($this->mailbox->fresh()->import_since->toDateString())->toBe('2026-06-27');
 });

@@ -30,6 +30,60 @@ class FakeMailboxClient implements MailboxClient
     /** What the server would report as its `\Sent` folder. */
     public ?string $sentFolder = null;
 
+    /** @var array<string, int> folder => UIDVALIDITY; 1 when not set */
+    public array $uidValidity = [];
+
+    /** @var array<string, array<int, Throwable>> folder => [uid => what fetching it throws] */
+    public array $brokenUids = [];
+
+    /** @var array<string, Throwable> folder => what any call on it throws */
+    public array $brokenFolders = [];
+
+    /** Fetching this UID throws, as a message the parser or server chokes on would. */
+    public function breakUid(string $folder, int $uid, Throwable $failure): static
+    {
+        $this->brokenUids[$folder][$uid] = $failure;
+
+        return $this;
+    }
+
+    public function repairUid(string $folder, int $uid): static
+    {
+        unset($this->brokenUids[$folder][$uid]);
+
+        return $this;
+    }
+
+    /** Every call on this folder throws; other folders keep working. */
+    public function breakFolder(string $folder, Throwable $failure): static
+    {
+        $this->brokenFolders[$folder] = $failure;
+
+        return $this;
+    }
+
+    /**
+     * The server renumbered the folder (new UIDVALIDITY): the same messages
+     * under new UIDs, starting at 1 again.
+     */
+    public function renumber(string $folder, int $uidValidity): void
+    {
+        $messages = array_values($this->folders[$folder] ?? []);
+        $this->folders[$folder] = [];
+        $this->uidValidity[$folder] = $uidValidity;
+
+        foreach ($messages as $raw) {
+            $this->deliver($folder, $raw);
+        }
+    }
+
+    public function uidValidity(string $folder): ?int
+    {
+        $this->guard('uidValidity', $folder);
+
+        return $this->uidValidity[$folder] ?? 1;
+    }
+
     /** Put a raw message into a folder, as a delivery would. Returns its UID. */
     public function deliver(string $folder, string $raw): int
     {
@@ -76,6 +130,10 @@ class FakeMailboxClient implements MailboxClient
     {
         $this->guard('fetchRaw', $folder);
 
+        if (isset($this->brokenUids[$folder][$uid])) {
+            throw $this->brokenUids[$folder][$uid];
+        }
+
         return $this->folders[$folder][$uid]
             ?? throw new \RuntimeException("No message with UID {$uid} in {$folder}.");
     }
@@ -106,6 +164,10 @@ class FakeMailboxClient implements MailboxClient
 
         if ($this->failure) {
             throw $this->failure;
+        }
+
+        if ($folder !== '' && isset($this->brokenFolders[$folder])) {
+            throw $this->brokenFolders[$folder];
         }
     }
 

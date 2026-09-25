@@ -16,6 +16,9 @@ abstract class TestCase extends AddonTestCase
 
     protected string $addonServiceProvider = ServiceProvider::class;
 
+    /** @var list<callable> Nav::extend() callbacks bootAddon() registered. */
+    public array $navCallbacks = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -26,8 +29,11 @@ abstract class TestCase extends AddonTestCase
         // Role and user permissions need the pro edition.
         config()->set('statamic.editions.pro', true);
 
-        // AddonTestCase swaps Nav for a strict mock; let bootAddon() extend it.
-        Nav::shouldReceive('extend')->andReturnNull();
+        // AddonTestCase swaps Nav for a strict mock; let bootAddon() extend it
+        // and keep the callback, so a test can run it against a stand-in builder.
+        Nav::shouldReceive('extend')->andReturnUsing(function ($callback) {
+            $this->navCallbacks[] = $callback;
+        });
 
         // Statamic runs bootAddon() inside a booted callback Testbench never
         // fires; run it the way that callback would.

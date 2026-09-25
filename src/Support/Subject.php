@@ -18,6 +18,14 @@ class Subject
         return mb_strtolower(trim($subject));
     }
 
+    /** Without Re:, AW:, Fwd: and the like, case kept: a conversation's title. */
+    public static function bare(string $subject): string
+    {
+        $bare = trim((string) preg_replace(self::PREFIX, '', $subject));
+
+        return $bare === '' ? trim($subject) : $bare;
+    }
+
     /** "Re: " once, never "Re: Re: ". */
     public static function reply(string $subject): string
     {

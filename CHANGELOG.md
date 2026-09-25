@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.1 — 2026-09-25
+
+The filter could hide or delete real leads. Fixed, with a way to get back what 0.2.0 skipped.
+
+### Fixed
+
+- **Hiding a sender or domain deletes first contacts only.** Conversations you answered, with a
+  LeadHub contact, or taken over stay, your own sent mails in them included. Hiding works only from
+  a conversation in "Neu", and the dialog says beforehand how many conversations will be deleted.
+  A contact, someone you have written to before, or a reply in an existing conversation now also
+  gets through a hidden sender or domain.
+- **Sent is read before INBOX.** A reply that arrived in INBOX in the same fetch as your mail found
+  no thread yet and could be taken for bulk mail (an out-of-office answer, a ticket system).
+  Someone you have written to before is now an exception from the bulk filter as well.
+- **Contact forms and booking tools.** A mail from `noreply@` with a person in `Reply-To` is that
+  person: they become the other side of the conversation, the exceptions apply to them, and the
+  no-reply rule does not fire.
+- **Skip records keep less.** The Message-ID only as a SHA-256 hash, the sender only for hidden
+  senders (where removing the rule needs it). A migration clears the sender of the others.
+- Removing a hidden sender needs `reply inbox`, like hiding it; before, it needed
+  `manage inbox mailboxes`.
+- `inbox:reclassify` takes a conversation out of "Neu" once it has become relevant, applies
+  relevance even when headers cannot be read (archived mail), and reads headers stored by 0.2.0
+  again because they lack `Reply-To`.
+- A conversation that starts with your reply is titled without `Re:`.
+
+### Added
+
+- `inbox:reclassify --reconsider-skipped [--dry-run]` looks at every skip record again (except
+  hidden senders): headers by PEEK at the recorded folder and UID, or, when the UID is gone, a
+  search by Message-ID in INBOX and All Mail. What no longer counts as bulk mail is imported; the
+  records left are hashed.
+
+### Upgrading
+
+- `php artisan migrate`, then `php artisan inbox:reclassify --reconsider-skipped --dry-run`, then
+  without `--dry-run`, then `php artisan inbox:reclassify --dry-run` to check nothing is left.
+
 ## 0.2.0 — 2026-09-25
 
 Only relevant mail. The inbox is for conversations with leads and customers; newsletters and

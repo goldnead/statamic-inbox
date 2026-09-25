@@ -105,6 +105,16 @@ it('reads Sent before INBOX, so an auto-reply to your mail finds its thread in o
         ->and(SkippedMessage::count())->toBe(0);
 });
 
+it('names a conversation opened by your reply without the Re:', function () {
+    // With Sent read first, your reply can be the first message stored.
+    deliverAndFetch($this->imap, $this->mailbox, [
+        'INBOX' => ['01-new-thread.eml'],
+        'Sent' => ['02-sent-reply.eml'],
+    ]);
+
+    expect(Conversation::sole()->subject)->toBe('Frage zum Coaching');
+});
+
 it('stores bulk-looking mail from someone this mailbox wrote to before', function () {
     deliverAndFetch($this->imap, $this->mailbox, ['Sent' => ['21-sent-to-bob.eml']]);
     $raw = str_replace('Subject: Frage zum Coaching', "Subject: Frage zum Coaching\nAuto-Submitted: auto-replied", mailFixture('06-same-subject-other-sender.eml'));

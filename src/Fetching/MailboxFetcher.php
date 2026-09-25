@@ -21,6 +21,7 @@ use Goldnead\StatamicInbox\Parsing\ParsedMessage;
 use Goldnead\StatamicInbox\Parsing\QuoteStripper;
 use Goldnead\StatamicInbox\Support\MessageIds;
 use Goldnead\StatamicInbox\Support\Redactor;
+use Goldnead\StatamicInbox\Support\Subject;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -490,7 +491,8 @@ class MailboxFetcher
     {
         return Conversation::create([
             'mailbox_id' => $mailbox->id,
-            'subject' => MessageIds::fit($parsed->subject),
+            // A reply can be the first message stored (Sent is read first).
+            'subject' => MessageIds::fit(Subject::bare($parsed->subject)),
             'counterpart_email' => MessageIds::fit($counterpart),
             'contact_id' => $this->contacts->idFor($counterpart),
             'status' => Conversation::STATUS_OPEN,

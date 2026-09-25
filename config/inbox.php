@@ -76,6 +76,23 @@ return [
         'style_prompt' => null,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Filter
+    |--------------------------------------------------------------------------
+    |
+    | Bulk mail is recognised by its headers (see Filtering\BulkDetector).
+    | `bulk_headers` adds header names of your own to the built-in list; a
+    | trailing * matches a prefix. `freemail_domains` adds domains that can
+    | only be hidden sender by sender, never as a whole.
+    |
+    */
+
+    'filter' => [
+        'bulk_headers' => [],
+        'freemail_domains' => [],
+    ],
+
     'queue' => env('INBOX_QUEUE', 'default'),
 
     /*

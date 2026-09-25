@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.2.0 — 2026-09-25
+
+Only relevant mail. The inbox is for conversations with leads and customers; newsletters and
+invoices stay in your mail program.
+
+### Added
+
+- **Bulk mail is not taken over.** A mail with `List-Unsubscribe`, `List-Id` or `List-Post`,
+  `Precedence: bulk/list/junk`, `Auto-Submitted` (other than `no`), typical mailing-service headers
+  (`Feedback-ID`, `X-Campaign`, `X-Mailchimp-*`, `X-SES-Outgoing`, `X-MC-User` and more, extendable
+  via `inbox.filter.bulk_headers`), a no-reply sender or an empty `Return-Path` (bounces) is not
+  stored at all. Only a skip record is kept (Message-ID, folder, UID, reason), so it is not fetched
+  twice. A LeadHub contact and a reply in an existing conversation always come through. Sent mail
+  to more than ten people or by Bcc list counts as a circular and is skipped too. Switch per
+  mailbox: "Massenmails überspringen", on by default.
+- **First contacts in their own tab "Neu".** A conversation is relevant when the other side is a
+  LeadHub contact, when you answered or started it, or when you have written to that address from
+  this mailbox before. Everything else is filed as `new`: shown only in "Neu", with its own count,
+  not in the menu badge. Actions there: "Übernehmen", "Kontakt anlegen", "Absender ausblenden",
+  "Domain ausblenden". A reply takes a conversation out of "Neu" by itself.
+- **Hidden senders and domains.** Hiding deletes the existing conversations in Statamic
+  (attachments included) and keeps future mail out; the mails stay in Gmail or your mailbox.
+  Freemail domains (gmail.com, gmx.de, web.de and others) can only be hidden sender by sender. The
+  mailbox page lists the rules with "Entfernen".
+- **Own addresses.** Aliases per mailbox; mail between your own addresses makes no conversation.
+- `inbox:reclassify {--mailbox=} {--dry-run}` applies the filter to mail imported before: reads the
+  headers again over IMAP (headers only, PEEK, nothing is marked read), deletes bulk and
+  to-yourself conversations with their files, files unknown people under "Neu". Always run
+  `--dry-run` first.
+- The mailbox page shows the bulk mail skipped in the last 30 days.
+- New messages store the headers the filter decides on (`filter_headers`), so a rule change can be
+  applied again without asking the server.
+
+### Changed
+
+- A first contact from someone unknown now arrives as `new`, not `open`.
+
+### Fixed
+
+- The mailbox form now saves the sender name ("Absendername"); since 0.1.0 it was shown but not
+  sent.
+
+### Upgrading
+
+- Run `php artisan migrate`, then `php artisan inbox:reclassify --dry-run` and, when the numbers
+  look right, `php artisan inbox:reclassify`.
+
 ## 0.1.1 — 2026-09-25
 
 ### Fixed

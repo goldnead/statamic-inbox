@@ -26,15 +26,6 @@ Optional, each detected at runtime:
 
 ## Install
 
-The package is not on Packagist yet. Add the repository to your site's `composer.json` (you need
-read access to it):
-
-```json
-"repositories": [
-    { "type": "vcs", "url": "https://github.com/goldnead/statamic-inbox" }
-]
-```
-
 ```bash
 composer require goldnead/statamic-inbox
 php artisan migrate

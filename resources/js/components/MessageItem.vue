@@ -4,8 +4,9 @@
  * header, body, attachments and whatever went wrong sending it.
  */
 import { computed, ref } from 'vue';
-import { Alert, Badge, Button, Card, Description, Icon } from '@statamic/cms/ui';
+import { Badge, Button, Card, Description, Icon } from '@statamic/cms/ui';
 import MessageFrame from './MessageFrame.vue';
+import ProblemNotice from './ProblemNotice.vue';
 import { addressLine, fileSize, fullDateTime, listTime, senderName } from '../support/format.js';
 import { listedAttachments, splitText } from '../support/mailBody.js';
 
@@ -27,6 +28,23 @@ const showQuoted = ref(false);
 const htmlHasQuote = ref(false);
 const loadRemote = ref(false);
 
+// Worded on the server (ErrorExplainer). The raw text is the fallback for a
+// message stored before explanations existed.
+const sendProblem = computed(() => props.message.send_problem
+    ?? (props.message.send_error ? { code: 'unknown', title: __('This reply was not sent'), text: '', action: null, detail: props.message.send_error } : null));
+const filedProblem = computed(() => {
+    const p = props.message.filed_problem
+        ?? (props.message.filed_error ? { code: 'unknown', title: '', text: '', action: null, detail: props.message.filed_error } : null);
+    if (!p) return null;
+
+    // The reply did arrive; say that first, then why the copy is missing.
+    return {
+        ...p,
+        title: __('Sent, but not filed in the Sent folder'),
+        text: [__('The recipient has the reply. Your mail program will not show it under Sent.'), p.code !== 'unknown' ? p.title + '.' : ''].filter(Boolean).join(' '),
+    };
+});
+
 const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.value : text.value.hasQuote));
 </script>
 
@@ -44,7 +62,7 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
         >
             <span class="shrink-0 text-sm font-medium text-gray-900 dark:text-gray-100">{{ name }}</span>
             <span class="min-w-0 flex-1 truncate text-sm text-gray-500 dark:text-gray-400">{{ snippet }}</span>
-            <Icon v-if="message.attachments?.length" name="mail-send-email-attachment-document" class="size-3.5 shrink-0 text-gray-400" />
+            <Icon v-if="message.attachments?.length" name="inbox::paperclip" class="size-3.5 shrink-0 text-gray-400" />
             <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400" :title="fullDateTime(message.sent_at)">{{ listTime(message.sent_at) }}</span>
         </button>
 
@@ -69,20 +87,18 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
             </button>
 
             <div class="space-y-3">
-                <Alert v-if="message.send_error" variant="error" data-inbox-send-error>
-                    <p class="font-medium">{{ __('This reply was not sent') }}</p>
-                    <p>{{ __('Server message') }}: {{ message.send_error }}</p>
-                    <p class="mt-1">{{ __('The text is kept. You can put it back into the reply and send it again.') }}</p>
+                <ProblemNotice v-if="sendProblem" :problem="sendProblem" variant="error" data-inbox-send-error>
+                    <p class="mt-1">{{ __('The text is kept. Put it back into the reply and send it again once this is fixed.') }}</p>
                     <div v-if="canReply" class="mt-3">
-                        <Button size="sm" :text="__('Put into reply')" @click="$emit('reuse', message.text || '')" />
+                        <Button size="sm" variant="ghost" icon="edit" :text="__('Put into reply')" data-inbox-reuse @click="$emit('reuse', message.text || '')" />
                     </div>
-                </Alert>
+                </ProblemNotice>
 
-                <Alert v-if="message.filed_error" variant="warning" data-inbox-filed-error>
-                    <p class="font-medium">{{ __('Sent, but not filed in the Sent folder') }}</p>
-                    <p>{{ __('The recipient has the reply. Your mail program will not show it under Sent.') }}</p>
-                    <p class="mt-1 text-xs">{{ __('Server message') }}: {{ message.filed_error }}</p>
-                </Alert>
+                <ProblemNotice v-if="filedProblem" :problem="filedProblem" variant="warning" data-inbox-filed-error />
+
+                <p v-if="loadRemote" class="text-xs text-gray-500 dark:text-gray-400" data-inbox-remote-loaded>
+                    {{ __('Images loaded') }}
+                </p>
 
                 <div
                     v-if="message.has_remote_images && !loadRemote"
@@ -126,7 +142,7 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
                             target="_blank"
                             rel="noopener"
                         >
-                            <Icon name="mail-send-email-attachment-document" class="size-4 text-gray-500" />
+                            <Icon name="inbox::paperclip" class="size-4 text-gray-500" />
                             <span class="text-gray-900 dark:text-gray-100">{{ attachment.filename }}</span>
                             <span class="text-xs text-gray-500">{{ fileSize(attachment.size) }}</span>
                         </a>

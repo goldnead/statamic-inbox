@@ -186,7 +186,10 @@ class ServiceProvider extends AddonServiceProvider
     protected function registerPermissions(): void
     {
         Permission::extend(function (): void {
-            Permission::group('inbox', __('Inbox'), function (): void {
+            // `Postfach`, not `Inbox`: `Inbox` is the addon's name, which
+            // brand-context shows as the settings entry, translated to
+            // "Postfach-Einstellungen" so the nav does not list "Postfach" twice.
+            Permission::group('inbox', __('Postfach'), function (): void {
                 Permission::register('view inbox', function ($permission): void {
                     $permission->label(__('View conversations'))->children([
                         Permission::make('reply inbox')->label(__('Reply to conversations')),

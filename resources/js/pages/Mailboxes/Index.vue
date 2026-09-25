@@ -33,18 +33,33 @@ const title = __('Mailboxes');
 const columns = [
     { field: 'name', label: __('Name'), visible: true, sortable: true },
     { field: 'state', label: __('Fetching'), visible: true, sortable: false },
-    { field: 'last_fetched_at', label: __('Last fetched'), visible: true, sortable: true },
+    // "Last successful": next to "Not reachable", a plain "last fetched"
+    // time read as if the fetch had just worked.
+    { field: 'last_fetched_at', label: __('Last successful fetch'), visible: true, sortable: true },
 ];
 
 const rows = computed(() => props.mailboxes);
 
 /** One word for the state of a mailbox, and the colour it gets. */
 function state(mailbox) {
-    if (!mailbox.active) return { text: __('Paused'), color: 'default' };
-    if (mailbox.last_error && mailbox.last_error_scope === 'mailbox') return { text: __('Not reachable'), color: 'red' };
-    if (mailbox.last_error) return { text: __('With problems'), color: 'amber' };
-    if (!mailbox.last_fetched_at) return { text: __('Waiting for the first fetch'), color: 'default' };
-    return { text: __('Working'), color: 'green' };
+    const problem = mailbox.problem;
+    const reason = problem ? `${problem.title}. ${problem.text}` : null;
+
+    if (!mailbox.active) return { text: __('Paused'), color: 'default', reason: null };
+    if (mailbox.last_error && mailbox.last_error_scope === 'mailbox') {
+        const text = {
+            auth: __('Login refused'),
+            connection: __('Server not reachable'),
+            tls: __('Encryption failed'),
+            folder: __('Folder missing'),
+            quota: __('Mailbox full'),
+        }[problem?.code] ?? __('Fetch failing');
+
+        return { text, color: 'red', reason };
+    }
+    if (mailbox.last_error) return { text: __('With problems'), color: 'amber', reason };
+    if (!mailbox.last_fetched_at) return { text: __('Waiting for the first fetch'), color: 'default', reason: null };
+    return { text: __('Working'), color: 'green', reason: null };
 }
 
 function reloadPage() {
@@ -101,7 +116,13 @@ function reloadPage() {
                 <div class="text-2xs text-gray-500">{{ row.email }}</div>
             </template>
             <template #cell-state="{ row }">
-                <Badge pill :color="state(row).color" :text="state(row).text" :data-inbox-mailbox-state="row.id" />
+                <Badge
+                    v-tooltip="state(row).reason"
+                    pill
+                    :color="state(row).color"
+                    :text="state(row).text"
+                    :data-inbox-mailbox-state="row.id"
+                />
             </template>
             <template #cell-last_fetched_at="{ row }">
                 <span class="text-sm" :title="fullDateTime(row.last_fetched_at)">

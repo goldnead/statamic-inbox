@@ -3,7 +3,7 @@ import { buildSrcdoc, initiallyExpanded, listedAttachments, splitText } from '..
 import {
     applyPreset, detectPreset, fromMailbox, isGmail, passwordRequired, payload, tabsWithErrors, testPayload,
 } from '../../resources/js/support/mailboxForm.js';
-import { isSnoozed, mailboxProblems } from '../../resources/js/support/status.js';
+import { dismissedSignatures, dismissSignature, isSnoozed, mailboxProblems } from '../../resources/js/support/status.js';
 import { listTime, snoozePresets } from '../../resources/js/support/format.js';
 
 const gmailReply = '<div dir="ltr"><div>Dienstag passt super, danke!</div></div><br><div><div dir="ltr">Am So., 20. Sept. 2026 um 14:00 Uhr schrieb Adrian Goldner &lt;<a href="mailto:a@b.test">a@b.test</a>&gt;:<br></div><blockquote>Hallo Anna</blockquote></div>';
@@ -38,6 +38,15 @@ describe('buildSrcdoc', () => {
         expect(hidden.srcdoc).toContain('[data-inbox-quote]{display:none!important}');
         expect((hidden.srcdoc.match(/data-inbox-quote=""/g) ?? []).length).toBe(2);
         expect(shown.srcdoc).not.toContain('display:none!important');
+    });
+
+    it('puts a quiet placeholder where a blocked image would be', () => {
+        const { srcdoc } = buildSrcdoc('<img data-inbox-src="https://cdn.example/banner.jpg" alt="Banner">');
+
+        expect(srcdoc).toContain('src="data:image/svg+xml,');
+        expect(srcdoc).toContain('data-inbox-blocked=""');
+        expect(srcdoc).toContain('alt=""');
+        expect(srcdoc).toContain('title="Banner"');
     });
 
     it('allows no scripts, ever', () => {
@@ -112,19 +121,30 @@ describe('mailbox form', () => {
 
 describe('status and dates', () => {
     it('words what the fetch could not do', () => {
+        const refused = { code: 'auth', title: 'The app password for Chor was refused', text: 'Renew it.', action: { label: 'Renew password', url: '/edit?tab=account' }, detail: '535' };
         const problems = mailboxProblems(
             [
-                { id: 1, name: 'Chor', last_error: 'login failed', last_error_scope: 'mailbox' },
-                { id: 2, name: 'Coaching', last_error: 'Sent: gone', last_error_scope: 'folder', folder_errors: { Sent: 'gone' } },
+                { id: 1, name: 'Chor', last_error: '535', last_error_scope: 'mailbox', problem: refused },
+                { id: 2, name: 'Coaching', sent_folder: 'Gesendet', last_error: 'x', last_error_scope: 'folder', folder_problems: { Gesendet: { code: 'folder', title: 't', text: 'Rename it.', detail: 'NONEXISTENT' } } },
             ],
-            [{ mailbox_id: 2, folder: 'INBOX', count: 2 }],
+            [{ mailbox_id: 2, folder: 'INBOX', count: 2, latest: 9 }],
         );
 
-        expect(problems.map((p) => [p.variant, p.heading])).toEqual([
-            ['error', 'The mailbox Chor cannot be fetched'],
-            ['warning', 'The folder Sent in Coaching cannot be read'],
-            ['warning', '2 messages in INBOX (Coaching) could not be read'],
+        expect(problems.map((p) => [p.variant, p.problem.title])).toEqual([
+            ['error', 'The app password for Chor was refused'],
+            ['warning', 'The Sent folder of Coaching cannot be read'],
+            ['warning', '2 messages in the inbox of Coaching could not be read'],
         ]);
+        expect(problems[0].problem.action.url).toBe('/edit?tab=account');
+        expect(problems[2].dismissible).toBe(true);
+        expect(problems[2].signature).toBe('2:INBOX:9');
+    });
+
+    it('remembers a hidden notice until something new happens', () => {
+        dismissSignature('2:INBOX:9');
+
+        expect(dismissedSignatures().has('2:INBOX:9')).toBe(true);
+        expect(dismissedSignatures().has('2:INBOX:10')).toBe(false);
     });
 
     it('snoozes to the coming Monday, not today', () => {

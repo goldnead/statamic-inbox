@@ -29,26 +29,29 @@ export function mailboxProblems(mailboxes = [], failures = []) {
     const byId = Object.fromEntries(mailboxes.map((m) => [m.id, m]));
 
     for (const mailbox of mailboxes) {
-        if (mailbox.last_error && mailbox.last_error_scope === 'mailbox') {
+        // Worded on the server (ErrorExplainer), cause and fix included.
+        if (mailbox.problem) {
             problems.push({
                 key: `mailbox-${mailbox.id}`,
                 variant: 'error',
-                mailbox,
-                heading: __('The mailbox :name cannot be fetched', { name: mailbox.name }),
-                text: __('New mail is not arriving here until the connection works again.'),
-                detail: mailbox.last_error,
+                problem: {
+                    ...mailbox.problem,
+                    text: `${mailbox.problem.text} ${__('Until then no new mail arrives from :name.', { name: mailbox.name })}`,
+                },
             });
             continue;
         }
 
-        for (const [folder, error] of Object.entries(mailbox.folder_errors ?? {})) {
+        for (const [folder, problem] of Object.entries(mailbox.folder_problems ?? {})) {
+            if (!problem) continue;
             problems.push({
                 key: `folder-${mailbox.id}-${folder}`,
                 variant: 'warning',
-                mailbox,
-                heading: __('The folder :folder in :name cannot be read', { folder, name: mailbox.name }),
-                text: __('The other folders are fetched as usual.'),
-                detail: error,
+                problem: {
+                    ...problem,
+                    title: __(':where of :name cannot be read', { where: folderName(folder, mailbox), name: mailbox.name }),
+                    text: `${problem.text} ${__('The other folders are fetched as usual.')}`,
+                },
             });
         }
     }
@@ -56,17 +59,68 @@ export function mailboxProblems(mailboxes = [], failures = []) {
     for (const failure of failures) {
         const mailbox = byId[failure.mailbox_id];
         if (!mailbox) continue;
+        const where = folderIn(failure.folder, mailbox);
         problems.push({
             key: `failed-${failure.mailbox_id}-${failure.folder}`,
             variant: 'warning',
-            mailbox,
-            heading: failure.count === 1
-                ? __('One message in :folder (:name) could not be read', { folder: failure.folder, name: mailbox.name })
-                : __(':count messages in :folder (:name) could not be read', { count: failure.count, folder: failure.folder, name: mailbox.name }),
-            text: __('They were tried three times and are now skipped. Open them in your mail program.'),
-            detail: null,
+            dismissible: true,
+            signature: `${failure.mailbox_id}:${failure.folder}:${failure.latest ?? failure.count}`,
+            problem: {
+                code: 'skipped',
+                title: failure.count === 1
+                    ? __('One message :where of :name could not be read', { where, name: mailbox.name })
+                    : __(':count messages :where of :name could not be read', { count: failure.count, where, name: mailbox.name }),
+                text: __('They were tried three times and are now skipped. Open them in your mail program.'),
+                action: null,
+                detail: null,
+            },
         });
     }
 
     return problems;
+}
+
+function folderKind(folder, mailbox) {
+    if (String(folder).toUpperCase() === 'INBOX' || folder === mailbox.inbox_folder) return 'inbox';
+    if (folder === mailbox.sent_folder || /sent|gesendet/i.test(folder)) return 'sent';
+    return 'other';
+}
+
+/** "Der Posteingang", "Der Gesendet-Ordner", "Der Ordner Archiv": never the IMAP name INBOX. */
+export function folderName(folder, mailbox = {}) {
+    return {
+        inbox: __('The inbox'),
+        sent: __('The Sent folder'),
+        other: __('The folder :folder', { folder }),
+    }[folderKind(folder, mailbox)];
+}
+
+/** "im Posteingang", "im Gesendet-Ordner", "im Ordner Archiv". */
+export function folderIn(folder, mailbox = {}) {
+    return {
+        inbox: __('in the inbox'),
+        sent: __('in the Sent folder'),
+        other: __('in the folder :folder', { folder }),
+    }[folderKind(folder, mailbox)];
+}
+
+/** Notices hidden by "Ausblenden", until something new happens. */
+const DISMISSED = 'inbox.dismissed-notices';
+
+export function dismissedSignatures() {
+    try {
+        return new Set(JSON.parse(globalThis.localStorage?.getItem(DISMISSED) ?? '[]'));
+    } catch {
+        return new Set();
+    }
+}
+
+export function dismissSignature(signature) {
+    try {
+        const all = dismissedSignatures();
+        all.add(signature);
+        globalThis.localStorage?.setItem(DISMISSED, JSON.stringify([...all].slice(-50)));
+    } catch {
+        // Private mode or blocked storage: hidden until the next page load only.
+    }
 }

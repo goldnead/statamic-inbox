@@ -26,7 +26,7 @@ function inertiaPage($response): array
 }
 
 it('renders the inbox page with columns, the mailbox filter and what the fetch could not do', function () {
-    inboxMailbox(['name' => 'Chor', 'email' => 'chor@goldner.test', 'last_error' => 'login failed', 'last_error_scope' => 'mailbox']);
+    inboxMailbox(['name' => 'Chor', 'email' => 'chor@goldner.test', 'last_error' => 'IMAP login failed: [AUTHENTICATIONFAILED] Invalid credentials', 'last_error_scope' => 'mailbox']);
     FetchFailure::create([
         'mailbox_id' => $this->mailbox->id, 'folder' => 'INBOX', 'uid' => 7, 'error' => 'broken',
         'attempts' => 3, 'gave_up_at' => Carbon::now(),
@@ -40,7 +40,8 @@ it('renders the inbox page with columns, the mailbox filter and what the fetch c
         ->and(collect($page['props']['filters'])->pluck('handle')->all())->toContain('inbox_mailbox')
         ->and($page['props']['tabCounts'])->toBe(['open' => 1, 'waiting' => 0, 'closed' => 0, 'snoozed' => 0])
         ->and(collect($page['props']['mailboxes'])->firstWhere('name', 'Chor')['last_error_scope'])->toBe('mailbox')
-        ->and($page['props']['failures'])->toBe([['mailbox_id' => $this->mailbox->id, 'folder' => 'INBOX', 'count' => 1]])
+        ->and($page['props']['failures'])->toBe([['mailbox_id' => $this->mailbox->id, 'folder' => 'INBOX', 'count' => 1, 'latest' => FetchFailure::sole()->id]])
+        ->and(collect($page['props']['mailboxes'])->firstWhere('name', 'Chor')['problem']['title'])->toBe('The app password for Chor was refused')
         ->and($page['props']['canReply'])->toBeFalse()
         ->and($page['props']['canManageMailboxes'])->toBeFalse();
 });

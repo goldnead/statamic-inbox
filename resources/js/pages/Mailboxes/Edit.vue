@@ -13,6 +13,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import axios from 'axios';
+import { parseDate } from '@internationalized/date';
 import { Head, router } from '@statamic/cms/inertia';
 import {
     Alert,
@@ -20,6 +21,7 @@ import {
     Button,
     Card,
     CommandPaletteItem,
+    DatePicker,
     Description,
     Field,
     Header,
@@ -33,6 +35,7 @@ import {
     TabTrigger,
 } from '@statamic/cms/ui';
 
+import ProblemNotice from '../../components/ProblemNotice.vue';
 import { errorBag, errorMessages, firstMessage } from '../../support/serverErrors.js';
 import {
     applyPreset,
@@ -46,7 +49,6 @@ import {
     tabsWithErrors as errorTabs,
     testPayload,
 } from '../../support/mailboxForm.js';
-import { fullDateTime } from '../../support/format.js';
 
 const props = defineProps({
     mailbox: { type: Object, required: true },
@@ -126,7 +128,9 @@ function markClean() {
 onBeforeUnmount(() => globalThis.Statamic?.$dirty?.remove?.(DIRTY));
 
 // ── Tabs ────────────────────────────────────────────────────────────────
-const activeTab = ref('account');
+// `?tab=servers` from an error's "Server prüfen" button opens that tab.
+const requestedTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+const activeTab = ref(Object.keys(TAB_FIELDS).includes(requestedTab) ? requestedTab : 'account');
 const tabsWithErrors = computed(() => errorTabs(errors.value));
 
 const shownKeys = Object.values(TAB_FIELDS).flat();
@@ -186,20 +190,63 @@ async function runTest() {
             const first = Object.keys(TAB_FIELDS).find((t) => tabsWithErrors.value.has(t));
             if (first) activeTab.value = first;
         }
-        // A field's message stands at the field; the alert does not repeat it.
-        testResult.value = {
-            failed: Object.keys(bag).length ? __('Check the marked fields first.') : (errorMessages(e)[0] ?? __('The test could not run.')),
-        };
+        testResult.value = Object.keys(bag).length
+            ? { invalid: true }
+            : { failed: { code: 'unknown', title: errorMessages(e)[0] ?? __('The test could not run.'), text: '', action: null, detail: null } };
     } finally {
         testing.value = false;
     }
 }
 
-// A mailbox that cannot be reached at all is an error; a folder or a
-// message the fetch could not read is a warning.
-const lastErrorVariant = computed(() => (stored.value.last_error_scope === 'mailbox' ? 'error' : 'warning'));
+/**
+ * Core's DatePicker takes and returns a date object (@internationalized/date),
+ * never a string: handed "2026-06-27" it fails to render at all. The API
+ * wants YYYY-MM-DD, and the object's toString() starts with exactly that.
+ */
+const importSinceValue = computed(() => {
+    try {
+        return form.value.import_since ? parseDate(form.value.import_since) : null;
+    } catch {
+        return null;
+    }
+});
+
+// Without it the date segments follow the browser (6/27/2026 in an English
+// browser) instead of the language the Control Panel is set to.
+const cpLocale = globalThis.Statamic?.$config?.get?.('translationLocale') || globalThis.Statamic?.$config?.get?.('locale') || undefined;
+
+function toDateString(value) {
+    return value ? String(value).slice(0, 10) : '';
+}
 
 const testOk = computed(() => testResult.value?.imap?.ok && testResult.value?.smtp?.ok);
+
+/** Each half that failed, worded by ErrorExplainer, and whether the other one works. */
+const failedHalves = computed(() => {
+    const r = testResult.value;
+    if (!r?.imap || !r?.smtp) return [];
+    const halves = [
+        { key: 'imap', label: __('Receiving (IMAP)'), result: r.imap, other: r.smtp, otherLabel: __('Sending (SMTP)') },
+        { key: 'smtp', label: __('Sending (SMTP)'), result: r.smtp, other: r.imap, otherLabel: __('Receiving (IMAP)') },
+    ];
+
+    return halves.filter((h) => !h.result.ok).map((h) => {
+        const explained = h.result.explanation ?? { code: 'unknown', title: __('The connection failed'), text: '', detail: h.result.error };
+
+        return {
+            key: h.key,
+            problem: { ...explained, title: `${h.label}: ${explained.title}`, action: null },
+            otherWorks: h.other.ok ? __(':half works.', { half: h.otherLabel }) : null,
+        };
+    });
+});
+
+// ── Last fetch ──────────────────────────────────────────────────────────
+// A mailbox that cannot be reached at all is an error; a folder or a
+// message the fetch could not read is a warning. No button: the form that
+// fixes it is this one, and the tab it needs is opened instead.
+const lastErrorVariant = computed(() => (stored.value.last_error_scope === 'mailbox' ? 'error' : 'warning'));
+const lastProblem = computed(() => (stored.value.problem ? { ...stored.value.problem, action: null } : null));
 </script>
 
 <template>
@@ -226,36 +273,35 @@ const testOk = computed(() => testResult.value?.imap?.ok && testResult.value?.sm
             </ul>
         </Alert>
 
-        <Alert
-            v-if="testResult"
-            :variant="testOk ? 'success' : 'error'"
-            class="mb-4"
-            data-inbox-test-result
-        >
-            <p class="font-medium">{{ testOk ? __('Connection works') : __('Connection failed') }}</p>
-            <p v-if="testResult.failed">{{ testResult.failed }}</p>
-            <ul v-else class="space-y-1">
-                <li>
-                    <strong>{{ __('Receiving (IMAP)') }}:</strong>
-                    {{ testResult.imap.ok ? __('works') : testResult.imap.error }}
-                </li>
-                <li>
-                    <strong>{{ __('Sending (SMTP)') }}:</strong>
-                    {{ testResult.smtp.ok ? __('works') : testResult.smtp.error }}
-                </li>
-            </ul>
-        </Alert>
+        <div v-if="testResult" class="mb-4 space-y-3" data-inbox-test-result>
+            <!-- The fields carry their own messages; this only points at them. -->
+            <Alert v-if="testResult.invalid" variant="error" :text="__('Please check the marked fields.')" />
+            <ProblemNotice v-else-if="testResult.failed" :problem="testResult.failed" variant="error" />
+            <Alert
+                v-else-if="testOk"
+                variant="success"
+                :text="__('Connection works. Receiving and sending both succeeded.')"
+            />
+            <template v-else>
+                <ProblemNotice
+                    v-for="half in failedHalves"
+                    :key="half.key"
+                    :problem="half.problem"
+                    variant="error"
+                    :data-inbox-test-half="half.key"
+                >
+                    <p v-if="half.otherWorks" class="mt-1">{{ half.otherWorks }}</p>
+                </ProblemNotice>
+            </template>
+        </div>
 
-        <Alert
-            v-if="!isNew && stored.last_error"
+        <ProblemNotice
+            v-if="!isNew && lastProblem"
+            :problem="lastProblem"
             :variant="lastErrorVariant"
             class="mb-4"
             data-inbox-last-error
-        >
-            <p class="font-medium">{{ stored.last_error_scope === 'mailbox' ? __('The last fetch failed') : __('The last fetch had problems') }}</p>
-            <p class="break-words">{{ __('Server message') }}: {{ stored.last_error }}</p>
-            <p v-if="stored.last_fetched_at" class="mt-1 text-xs">{{ fullDateTime(stored.last_fetched_at) }}</p>
-        </Alert>
+        />
 
         <Tabs v-model="activeTab">
             <TabList>
@@ -305,7 +351,7 @@ const testOk = computed(() => testResult.value?.imap?.ok && testResult.value?.sm
                                 :label="__('Password')"
                                 :required="needsPassword"
                                 :error="errors.password"
-                                :instructions="passwordInstructions"
+                                :instructions="errors.password ? null : passwordInstructions"
                             >
                                 <Input
                                     id="password"
@@ -323,6 +369,11 @@ const testOk = computed(() => testResult.value?.imap?.ok && testResult.value?.sm
                             {{ __('How to create an app password at :provider:', { provider: preset.label }) }}
                             <a :href="preset.help" target="_blank" rel="noopener" class="underline">{{ __('instructions') }}</a>
                         </Description>
+                        <Description
+                            v-if="provider === 'google'"
+                            :text="__('Google offers app passwords only once 2-step verification is switched on for the account. In Google Workspace, the admin can also switch app passwords off; then the admin has to allow them first.')"
+                            data-inbox-google-hint
+                        />
                     </Card>
                 </Panel>
             </TabContent>
@@ -393,7 +444,17 @@ const testOk = computed(() => testResult.value?.imap?.ok && testResult.value?.sm
                             :error="errors.import_since"
                             :instructions="__('The first fetch takes mail from this day on. Default: the last :days days.', { days: importDays })"
                         >
-                            <Input id="import_since" v-model="form.import_since" type="date" class="max-w-56" />
+                            <!-- Core's picker: the CP's own date format, not the browser's. -->
+                            <div class="max-w-64">
+                                <DatePicker
+                                    id="import_since"
+                                    :model-value="importSinceValue"
+                                    granularity="day"
+                                    :locale="cpLocale"
+                                    data-inbox-import-since
+                                    @update:model-value="form.import_since = toDateString($event)"
+                                />
+                            </div>
                         </Field>
 
                         <Field

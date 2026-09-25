@@ -55,7 +55,8 @@ class DraftSuggester
         if (! $response->successful()) {
             $reason = (string) ($response->json('error.message') ?? $response->status());
 
-            throw new DraftUnavailable(__('The AI returned an error: :reason', ['reason' => str_replace($key, '***', $reason)]));
+            throw (new DraftUnavailable(__('The AI returned an error: :reason', ['reason' => str_replace($key, '***', $reason)])))
+                ->withStatus($response->status());
         }
 
         $text = collect((array) $response->json('content'))

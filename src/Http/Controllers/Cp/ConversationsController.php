@@ -14,6 +14,7 @@ use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Sending\ReplySender;
 use Goldnead\StatamicInbox\Sending\SendFailed;
+use Goldnead\StatamicInbox\Support\ErrorExplainer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,7 +44,7 @@ class ConversationsController extends Controller
      * The page, and the JSON core's Listing asks the same URL for: rows plus
      * `meta.columns` on every response, paginated, searched and filtered.
      */
-    public function index(Request $request, LeadHubContacts $contacts): Response|JsonResponse
+    public function index(Request $request, LeadHubContacts $contacts, ErrorExplainer $explainer): Response|JsonResponse
     {
         Gate::authorize('view inbox');
 
@@ -76,16 +77,31 @@ class ConversationsController extends Controller
                 'last_error' => $m->last_error,
                 'last_error_scope' => $m->last_error_scope,
                 'folder_errors' => $m->folder_errors ?? [],
+                'inbox_folder' => $m->inbox_folder,
+                'sent_folder' => $m->sent_folder,
+                // In words, with the fix: the whole mailbox, and each folder.
+                'problem' => $m->last_error_scope === 'mailbox'
+                    ? $explainer->explain($m->last_error, ErrorExplainer::FETCH, $m)
+                    : null,
+                'folder_problems' => collect($m->folder_errors ?? [])
+                    ->map(fn ($error) => $explainer->explain((string) $error, ErrorExplainer::FETCH, $m))
+                    ->all(),
                 'last_fetched_at' => $m->last_fetched_at?->toIso8601String(),
                 'edit_url' => cp_route('inbox.mailboxes.edit', $m->id),
             ])->all(),
             // Messages the fetch gave up on: skipped for good, so said once.
             'failures' => FetchFailure::query()
                 ->whereNotNull('gave_up_at')
-                ->selectRaw('mailbox_id, folder, count(*) as count')
+                ->selectRaw('mailbox_id, folder, count(*) as count, max(id) as latest')
                 ->groupBy('mailbox_id', 'folder')
                 ->get()
-                ->map(fn ($f) => ['mailbox_id' => (int) $f->mailbox_id, 'folder' => (string) $f->folder, 'count' => (int) $f->getAttribute('count')])
+                // `latest` lets the page hide a notice until a new failure arrives.
+                ->map(fn ($f) => [
+                    'mailbox_id' => (int) $f->mailbox_id,
+                    'folder' => (string) $f->folder,
+                    'count' => (int) $f->getAttribute('count'),
+                    'latest' => (int) $f->getAttribute('latest'),
+                ])
                 ->all(),
             'unreadCount' => Conversation::query()->where('unread', true)->count(),
             'canReply' => Gate::allows('reply inbox'),
@@ -222,7 +238,7 @@ class ConversationsController extends Controller
         return Str::limit(trim((string) preg_replace('/\s+/u', ' ', $text)), 140);
     }
 
-    public function show(int $inboxConversation, LeadHubContacts $contacts, EmailTemplateFiller $templates): Response
+    public function show(int $inboxConversation, LeadHubContacts $contacts, EmailTemplateFiller $templates, ErrorExplainer $explainer): Response
     {
         Gate::authorize('view inbox');
 
@@ -245,7 +261,7 @@ class ConversationsController extends Controller
                 'last_message_at' => $conversation->last_message_at?->toIso8601String(),
             ],
             'mailbox' => $conversation->mailbox?->only(['id', 'name', 'email']),
-            'messages' => $conversation->messages()->with('attachments')->get()->map(function (Message $m) {
+            'messages' => $conversation->messages()->with('attachments')->get()->map(function (Message $m) use ($explainer, $conversation) {
                 $attachments = $m->attachments->map(fn (Attachment $a) => [
                     ...$a->only(['id', 'filename', 'mime', 'size', 'content_id']),
                     'url' => cp_route('inbox.attachments.show', $a->id),
@@ -257,6 +273,8 @@ class ConversationsController extends Controller
                         'html_sanitized', 'body_stripped', 'has_remote_images', 'send_error', 'filed_error',
                     ]),
                     'sent_at' => $m->sent_at?->toIso8601String(),
+                    'send_problem' => $explainer->explain($m->send_error, ErrorExplainer::SEND, $conversation->mailbox, $conversation->counterpart_email),
+                    'filed_problem' => $explainer->explain($m->filed_error, ErrorExplainer::FILED, $conversation->mailbox),
                     'attachments' => $attachments->all(),
                     // data-inbox-cid="…" in html_sanitized → this URL, served
                     // through the permission-checked attachment route.
@@ -333,7 +351,7 @@ class ConversationsController extends Controller
         return response()->json(['contact' => $contact, 'conversation' => $conversation->fresh()], 201);
     }
 
-    public function reply(Request $request, int $inboxConversation, ReplySender $sender): JsonResponse
+    public function reply(Request $request, int $inboxConversation, ReplySender $sender, ErrorExplainer $explainer): JsonResponse
     {
         Gate::authorize('reply inbox');
 
@@ -351,13 +369,15 @@ class ConversationsController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (SendFailed $e) {
             // Stored with its error; the form keeps the text for another try.
-            return response()->json(['message' => $e->getMessage()], 502);
+            $explained = $explainer->explain($e->getMessage(), ErrorExplainer::SEND, $conversation->mailbox, $conversation->counterpart_email);
+
+            return response()->json(['message' => $explained['title'] ?? $e->getMessage(), 'explanation' => $explained], 502);
         }
 
         return response()->json(['message' => $message->only(['id', 'message_id', 'direction', 'send_error', 'filed_error'])], 201);
     }
 
-    public function draft(Request $request, int $inboxConversation, DraftSuggester $suggester): JsonResponse
+    public function draft(Request $request, int $inboxConversation, DraftSuggester $suggester, ErrorExplainer $explainer): JsonResponse
     {
         Gate::authorize('reply inbox');
 
@@ -367,7 +387,9 @@ class ConversationsController extends Controller
         try {
             return response()->json(['text' => $suggester->suggest($conversation, $instruction)]);
         } catch (DraftUnavailable $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            $explained = $explainer->explainAi($e->getMessage(), $e->status);
+
+            return response()->json(['message' => $explained['title'], 'explanation' => $explained], 422);
         }
     }
 

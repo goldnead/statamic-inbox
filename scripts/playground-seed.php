@@ -130,7 +130,33 @@ $client->deliver('INBOX', $raw([
 
 // Newsletter with remote images, photo with PDF.
 $client->deliver('INBOX', $fixture('07-html-tracking.eml'));
-$client->deliver('INBOX', str_replace('Subject: Foto vom Konzert', 'Subject: Foto vom Konzert am Samstag', $fixture('09-inline-image.eml')));
+// The fixture's photo is one pixel; a real picture shows whether the inline
+// image really arrives through the attachment route.
+$photo = function (): string {
+    $img = imagecreatetruecolor(480, 300);
+    for ($y = 0; $y < 300; $y++) {
+        $c = imagecolorallocate($img, 30 + (int) ($y / 3), 60 + (int) ($y / 4), 110 + (int) ($y / 3));
+        imageline($img, 0, $y, 479, $y, $c);
+    }
+    imagefilledrectangle($img, 0, 230, 479, 299, imagecolorallocate($img, 45, 35, 40));
+    foreach ([[90, 60], [200, 40], [320, 55], [410, 70]] as [$x, $r]) {
+        imagefilledellipse($img, $x, 120, $r * 2, $r * 2, imagecolorallocatealpha($img, 255, 214, 120, 70));
+    }
+    for ($i = 0; $i < 9; $i++) {
+        $x = 40 + $i * 50;
+        imagefilledellipse($img, $x, 215, 30, 36, imagecolorallocate($img, 25, 20, 25));
+        imagefilledrectangle($img, $x - 18, 230, $x + 18, 299, imagecolorallocate($img, 25, 20, 25));
+    }
+    ob_start();
+    imagepng($img);
+
+    return chunk_split(base64_encode((string) ob_get_clean()), 76, "\r\n");
+};
+$client->deliver('INBOX', str_replace(
+    ['Subject: Foto vom Konzert', 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='],
+    ['Subject: Foto vom Konzert am Samstag', rtrim($photo())],
+    $fixture('09-inline-image.eml'),
+));
 
 // An enquiry from someone who is not a contact.
 $client->deliver('INBOX', $raw([
@@ -193,6 +219,10 @@ Message::create([
 ]);
 $max->forceFill(['last_message_at' => Carbon::parse('2026-09-25 09:12:00')])->save();
 
+// Adrian's second reply to Anna went out, but its copy for Sent did not land.
+Message::query()->where('message_id', 'adrian-out-002@goldner.test')
+    ->update(['filed_error' => "APPEND failed: [TRYCREATE] Mailbox doesn't exist: Sent"]);
+
 // Two messages the fetch gave up on.
 foreach ([41, 42] as $uid) {
     FetchFailure::create([
@@ -212,7 +242,8 @@ foreach ([41, 42] as $uid) {
 $chor->forceFill([
     'last_error' => 'IMAP login failed: [AUTHENTICATIONFAILED] Invalid credentials (Failure)',
     'last_error_scope' => 'mailbox',
-    'last_fetched_at' => Carbon::now()->subMinutes(2),
+    // Only a run that got through writes this; the last one was two days ago.
+    'last_fetched_at' => Carbon::now()->subDays(2),
 ])->save();
 
 // ── One template for the reply form ──────────────────────────────────────

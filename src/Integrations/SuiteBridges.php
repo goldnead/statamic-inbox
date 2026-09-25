@@ -89,7 +89,7 @@ class SuiteBridges
         $this->app->make('automations')->registerEventTrigger(InboxMessageReceived::class, [
             'handle' => 'inbox_email_received',
             'label' => __('Email received'),
-            'group' => __('Inbox'),
+            'group' => __('Postfach'),
             'description' => __('A new mail arrived in a mailbox of the inbox.'),
             'payload' => fn (InboxMessageReceived $event) => [
                 'message' => [

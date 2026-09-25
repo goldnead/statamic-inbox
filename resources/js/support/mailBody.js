@@ -29,6 +29,14 @@ export const QUOTE_SELECTORS = [
     '#divRplyFwdMsg ~ *',
 ];
 
+/** Stands in for a remote image until "Bilder laden": grey, with a small picture sign. */
+export const BLOCKED_IMAGE = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 96" preserveAspectRatio="xMidYMid meet">'
+    + '<rect width="160" height="96" fill="#f3f4f6"/>'
+    + '<g fill="none" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"><rect x="66" y="34" width="28" height="22" rx="3"/>'
+    + '<path d="m66 52 8-8 7 6 5-4 8 7"/></g><circle cx="87" cy="41" r="2.5" fill="#9ca3af"/></svg>',
+);
+
 /** "Am So., 20. Sept. 2026 um 14:00 Uhr schrieb …:", "On …, … wrote:" */
 const ATTRIBUTION = /(schrieb|wrote|a écrit|escribió|ha scritto)\s*[^:]*:\s*$/iu;
 
@@ -45,12 +53,26 @@ export function buildSrcdoc(html, { inlineImages = {}, loadRemote = false, showQ
         if (url) img.setAttribute('src', url);
     });
 
-    if (loadRemote) {
-        doc.querySelectorAll(`[${REMOTE_ATTRIBUTE}]`).forEach((el) => {
+    doc.querySelectorAll(`[${REMOTE_ATTRIBUTE}]`).forEach((el) => {
+        if (loadRemote) {
             el.setAttribute('src', el.getAttribute(REMOTE_ATTRIBUTE));
             el.removeAttribute(REMOTE_ATTRIBUTE);
-        });
-    }
+            return;
+        }
+
+        // A quiet grey box in the image's place instead of the browser's
+        // broken-image sign and its alt text.
+        if (el.tagName === 'IMG') {
+            el.setAttribute('src', BLOCKED_IMAGE);
+            el.setAttribute('title', el.getAttribute('alt') || '');
+            el.setAttribute('alt', '');
+            el.setAttribute('data-inbox-blocked', '');
+            if (!el.getAttribute('width') && !el.getAttribute('height')) {
+                el.setAttribute('width', '160');
+                el.setAttribute('height', '96');
+            }
+        }
+    });
 
     // The sanitiser drops `class`, so Gmail's `.gmail_quote` is gone by the
     // time the HTML arrives. What survives is the shape: a blockquote, usually
@@ -82,6 +104,7 @@ export function buildSrcdoc(html, { inlineImages = {}, loadRemote = false, showQ
         `html,body{margin:0;padding:0;background:#fff;color:#1f2937;font-size:14px;line-height:1.5;font-family:${(font || 'system-ui,sans-serif').replace(/[<>{}]/g, '')};overflow-wrap:anywhere}`,
         'blockquote{margin:0 0 0 .5rem;padding-left:.75rem;border-left:2px solid #d1d5db;color:#4b5563}',
         'img{max-width:100%;height:auto}',
+        'img[data-inbox-blocked]{border-radius:4px;background:#f3f4f6}',
         'table{max-width:100%}',
         'pre{white-space:pre-wrap}',
         showQuoted ? '' : `${selector}{display:none!important}`,

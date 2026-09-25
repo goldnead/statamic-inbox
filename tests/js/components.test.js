@@ -68,18 +68,41 @@ describe('ReplyComposer', () => {
         expect(wrapper.find('textarea').element.value).toBe('Aus der Vorlage');
     });
 
-    it('keeps the text when the send fails and says why', async () => {
-        axios.post.mockRejectedValueOnce({ response: { status: 502, data: { message: 'SMTP refused' } } });
+    it('keeps the text when the send fails and says why, with the fix', async () => {
+        const explanation = {
+            code: 'auth', title: 'The app password for Coaching was refused', text: 'Renew it.',
+            action: { label: 'Renew password', url: '/cp/inbox/mailboxes/1/edit?tab=account' }, detail: '535 5.7.8',
+        };
+        axios.post.mockRejectedValueOnce({ response: { status: 502, data: { message: explanation.title, explanation } } });
         const wrapper = mount(ReplyComposer, { props: { recipient: 'a@b.test', urls } });
 
         await wrapper.find('textarea').setValue('Hallo');
         await wrapper.find('[data-inbox-send]').trigger('click');
         await flushPromises();
 
+        const notice = wrapper.find('[data-inbox-composer-problem]');
         expect(wrapper.find('textarea').element.value).toBe('Hallo');
-        expect(wrapper.find('[data-inbox-composer-problem]').attributes('data-attr-text')).toBe('SMTP refused');
+        expect(notice.text()).toContain('The app password for Coaching was refused');
+        expect(notice.find('[data-inbox-problem-action]').attributes('data-attr-href')).toBe('/cp/inbox/mailboxes/1/edit?tab=account');
+        // The server's own words stay folded until asked for.
+        expect(notice.text()).not.toContain('535 5.7.8');
+        await notice.find('[data-inbox-problem-detail-toggle]').trigger('click');
+        expect(wrapper.find('[data-inbox-problem-detail]').text()).toBe('535 5.7.8');
         expect(wrapper.emitted('failed')).toHaveLength(1);
-        expect(globalThis.Statamic.$toast.error).toHaveBeenCalledWith('SMTP refused');
+        expect(globalThis.Statamic.$toast.error).toHaveBeenCalledWith(explanation.title);
+    });
+
+    it('says in plain words when the AI key is missing', async () => {
+        const explanation = { code: 'ai_access', title: 'The AI access is not set up or has expired', text: 'Ask.', action: null, detail: 'invalid x-api-key' };
+        axios.post.mockRejectedValueOnce({ response: { status: 422, data: { message: explanation.title, explanation } } });
+        const wrapper = mount(ReplyComposer, { props: { recipient: 'a@b.test', urls, ai: true } });
+
+        wrapper.vm.$.setupState.mode = 'ai';
+        await wrapper.vm.$nextTick();
+        await wrapper.find('[data-inbox-suggest]').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('[data-inbox-composer-problem]').text()).toContain('The AI access is not set up or has expired');
     });
 });
 
@@ -122,7 +145,26 @@ describe('Mailboxes/Edit', () => {
         await flushPromises();
 
         expect(axios.post).toHaveBeenCalledWith('/m/1/test', expect.objectContaining({ imap_port: 143 }));
-        expect(wrapper.find('[data-inbox-test-result]').text()).toContain('Connection refused');
+        expect(wrapper.find('[data-inbox-test-half="smtp"]').text()).toContain('Sending (SMTP): The connection failed');
+        expect(wrapper.find('[data-inbox-test-half="smtp"]').text()).toContain('Receiving (IMAP) works.');
+        expect(wrapper.find('[data-inbox-test-half="imap"]').exists()).toBe(false);
+    });
+
+    it('points at the marked fields instead of calling it a failed connection', async () => {
+        axios.post.mockRejectedValueOnce({ response: { status: 422, data: { message: 'x', errors: { password: ['Enter the password again.'] } } } });
+        const wrapper = mount(MailboxEdit, { props });
+
+        await wrapper.find('input#imap_host').setValue('imap.anders.test');
+        await wrapper.find('[data-inbox-test]').trigger('click');
+        await flushPromises();
+
+        const result = wrapper.find('[data-inbox-test-result]');
+        expect(result.find('[data-attr-text]').attributes('data-attr-text')).toBe('Please check the marked fields.');
+        expect(result.text()).not.toContain('Connection');
+        // The password field says it once: its error, without the instructions repeating it.
+        const field = wrapper.find('[data-stub="Field"][data-attr-id="password"]');
+        expect(field.attributes('data-attr-error')).toBe('Enter the password again.');
+        expect(field.attributes('data-attr-instructions')).toBeUndefined();
     });
 
     it('puts validation errors at their fields and raises one generic toast', async () => {

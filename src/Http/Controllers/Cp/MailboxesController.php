@@ -5,6 +5,7 @@ namespace Goldnead\StatamicInbox\Http\Controllers\Cp;
 use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Contracts\TransportFactory;
 use Goldnead\StatamicInbox\Models\Mailbox;
+use Goldnead\StatamicInbox\Support\ErrorExplainer;
 use Goldnead\StatamicInbox\Support\HostGuard;
 use Goldnead\StatamicInbox\Support\Redactor;
 use Goldnead\StatamicInbox\Support\UnsafeHostException;
@@ -267,19 +268,22 @@ class MailboxesController extends Controller
         return false;
     }
 
-    /** @return array{ok: bool, error: string|null} */
+    /** @return array{ok: bool, error: string|null, explanation: array<string, mixed>|null} */
     protected function attempt(Mailbox $candidate, Mailbox $stored, callable $check): array
     {
         try {
             $check();
 
-            return ['ok' => true, 'error' => null];
+            return ['ok' => true, 'error' => null, 'explanation' => null];
         } catch (Throwable $e) {
             $error = Redactor::mask(Redactor::message($e, $candidate), $stored);
             $mailbox = $stored;
             Log::info('inbox: connection test failed.', ['mailbox' => $mailbox->id, 'error' => $error]);
 
-            return ['ok' => false, 'error' => $error];
+            // No button: the form holding the fix is already open.
+            $explanation = app(ErrorExplainer::class)->explain($error, ErrorExplainer::TEST, $candidate);
+
+            return ['ok' => false, 'error' => $error, 'explanation' => $explanation === null ? null : [...$explanation, 'action' => null]];
         }
     }
 
@@ -347,6 +351,8 @@ class MailboxesController extends Controller
         return [
             ...collect($mailbox->toArray())->except(['password'])->all(),
             'import_since' => $mailbox->import_since?->toDateString(),
+            // What went wrong, in words and with the fix (ErrorExplainer).
+            'problem' => app(ErrorExplainer::class)->explain($mailbox->last_error, ErrorExplainer::FETCH, $mailbox),
             'has_password' => (string) $mailbox->getRawOriginal('password') !== '',
             'edit_url' => $mailbox->exists ? cp_route('inbox.mailboxes.edit', $mailbox->id) : null,
         ];

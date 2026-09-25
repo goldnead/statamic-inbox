@@ -31,7 +31,8 @@ import {
 } from '@statamic/cms/ui';
 
 import { fullDateTime, listTime } from '../../support/format.js';
-import { mailboxProblems, statusLabel, TABS } from '../../support/status.js';
+import { dismissedSignatures, dismissSignature, mailboxProblems, statusLabel, TABS } from '../../support/status.js';
+import ProblemNotice from '../../components/ProblemNotice.vue';
 import { firstMessage } from '../../support/serverErrors.js';
 
 const props = defineProps({
@@ -53,6 +54,18 @@ const props = defineProps({
 const title = __('Postfach');
 const hasMailbox = computed(() => props.mailboxes.length > 0);
 const problems = computed(() => mailboxProblems(props.mailboxes, props.failures));
+
+// "Ausblenden" hides a skipped-messages notice until a new failure changes it.
+const dismissed = ref(dismissedSignatures());
+const visibleProblems = computed(() => problems.value.filter((p) => !p.signature || !dismissed.value.has(p.signature)));
+
+function dismiss(notice) {
+    dismissSignature(notice.signature);
+    dismissed.value = new Set([...dismissed.value, notice.signature]);
+}
+
+// On a phone the notices fold to their title line, so the list stays in view.
+const narrow = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)').matches;
 
 // ── Tabs ────────────────────────────────────────────────────────────────
 const activeTab = ref(TABS.includes(props.tab) ? props.tab : 'open');
@@ -123,21 +136,16 @@ async function patch(row, changes, message) {
                 />
             </Header>
 
-            <div v-if="problems.length" class="mb-6 space-y-3" data-inbox-problems>
-                <Alert
-                    v-for="problem in problems"
-                    :key="problem.key"
-                    :variant="problem.variant"
-                    :data-inbox-problem="problem.variant"
-                >
-                    <!-- Core's Alert drops its heading once the slot is used. -->
-                    <p class="font-medium">{{ problem.heading }}</p>
-                    <p>{{ problem.text }}</p>
-                    <p v-if="problem.detail" class="mt-1 text-xs opacity-80 break-words">{{ __('Server message') }}: {{ problem.detail }}</p>
-                    <div v-if="canManageMailboxes && problem.variant === 'error'" class="mt-3">
-                        <Button size="sm" :href="problem.mailbox.edit_url" :text="__('Check mailbox settings')" />
-                    </div>
-                </Alert>
+            <div v-if="visibleProblems.length" class="mb-6 space-y-3" data-inbox-problems>
+                <ProblemNotice
+                    v-for="notice in visibleProblems"
+                    :key="notice.key"
+                    :problem="notice.problem"
+                    :variant="notice.variant"
+                    :compact="narrow"
+                    :dismissible="notice.dismissible"
+                    @dismiss="dismiss(notice)"
+                />
             </div>
 
             <Tabs v-model="activeTab" class="mb-4">

@@ -119,4 +119,6 @@ const translate = (key, replacements = {}) => Object.entries(replacements ?? {})
 );
 
 config.global.mocks = { __: translate };
+// Core registers `v-tooltip` globally.
+config.global.directives = { tooltip: {} };
 globalThis.__ = translate;

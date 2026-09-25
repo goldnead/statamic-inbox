@@ -10,7 +10,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import axios from 'axios';
 import {
-    Alert,
     Button,
     ConfirmationModal,
     Description,
@@ -27,6 +26,18 @@ import {
     ToggleItem,
 } from '@statamic/cms/ui';
 import { errorBag, firstMessage } from '../support/serverErrors.js';
+import ProblemNotice from './ProblemNotice.vue';
+
+/**
+ * What went wrong, as ErrorExplainer worded it on the server (a failed send,
+ * an unavailable draft), else the server's one line as the title.
+ */
+function asProblem(e, fallback) {
+    const explained = e?.response?.data?.explanation;
+    if (explained) return explained;
+
+    return { code: 'unknown', title: firstMessage(e, fallback), text: '', action: null, detail: null };
+}
 import { fileSize } from '../support/format.js';
 
 const props = defineProps({
@@ -79,7 +90,7 @@ async function insertTemplate() {
         const { data } = await axios.post(props.urls.template, { slug: template.value });
         offer(data.text ?? '');
     } catch (e) {
-        problem.value = firstMessage(e, __('The template could not be loaded.'));
+        problem.value = asProblem(e, __('The template could not be loaded.'));
     } finally {
         filling.value = false;
     }
@@ -92,7 +103,7 @@ async function suggestDraft() {
         const { data } = await axios.post(props.urls.draft, { instruction: instruction.value || null });
         offer(data.text ?? '');
     } catch (e) {
-        problem.value = firstMessage(e, __('No draft could be suggested.'));
+        problem.value = asProblem(e, __('No draft could be suggested.'));
     } finally {
         filling.value = false;
     }
@@ -154,7 +165,7 @@ async function send() {
         // A field's own message belongs at the field; the toast says only
         // that something is wrong. A refused or failed send has no field.
         globalThis.Statamic?.$toast?.error?.(Object.keys(errors.value).length ? __('Something went wrong') : message);
-        if (!Object.keys(errors.value).length) problem.value = message;
+        if (!Object.keys(errors.value).length) problem.value = asProblem(e, message);
         // A failed send is stored with its error; the thread shows it.
         if (e?.response?.status === 502) emit('failed');
     } finally {
@@ -198,7 +209,7 @@ defineExpose({ setText });
                     <div class="min-w-48 flex-1">
                         <Input
                             v-model="instruction"
-                            :placeholder="__('Optional: what should it say? e.g. short, friendly, offer a date')"
+                            :placeholder="__('Optional, e.g. short, offer a date')"
                             @keydown.enter.prevent="suggestDraft"
                         />
                     </div>
@@ -207,7 +218,7 @@ defineExpose({ setText });
                 <Description :text="__('The draft only fills the text field. You read it, change it and send it yourself.')" />
             </div>
 
-            <Alert v-if="problem" variant="error" :text="problem" data-inbox-composer-problem />
+            <ProblemNotice v-if="problem" :problem="problem" variant="error" data-inbox-composer-problem />
 
             <Field id="inbox-reply-text" :error="errors.text" :label="__('Your reply')">
                 <Textarea id="inbox-reply-text" v-model="text" :rows="8" data-inbox-reply-text />
@@ -219,7 +230,7 @@ defineExpose({ setText });
                     :key="`${file.name}-${index}`"
                     class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-sm dark:border-gray-700"
                 >
-                    <Icon name="mail-send-email-attachment-document" class="size-4 text-gray-500" />
+                    <Icon name="inbox::paperclip" class="size-4 text-gray-500" />
                     <span>{{ file.name }}</span>
                     <span class="text-xs text-gray-500">{{ fileSize(file.size) }}</span>
                     <Button size="xs" variant="ghost" icon="x" icon-only :aria-label="__('Remove')" @click="removeFile(index)" />
@@ -232,7 +243,7 @@ defineExpose({ setText });
                     <input ref="picker" type="file" multiple class="hidden" @change="pick" />
                     <Button
                         variant="ghost"
-                        icon="mail-send-email-attachment-document"
+                        icon="inbox::paperclip"
                         :text="__('Attach file')"
                         @click="picker?.click()"
                     />

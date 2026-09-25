@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-09-25
+
+### Fixed
+
+- The addon list no longer calls the addon "Postfach-Einstellungen". The settings entry gets its name from `settingsTitle()` (brand-context 1.15), not from a global translation of the addon name "Inbox". With an older brand-context the entry reads "Inbox".
+
 ## 0.1.0 — 2026-09-25
 
 First release.

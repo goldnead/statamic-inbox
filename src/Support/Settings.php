@@ -33,6 +33,17 @@ class Settings implements ProvidesSettings
     }
 
     /**
+     * The sidebar entry and tab, read by brand-context 1.15 and later.
+     * Distinct from the tools entry "Postfach", so the sidebar does not list
+     * "Postfach" twice. Until 25.09.2026 this came from translating the addon
+     * name "Inbox" globally, which renamed the addon in the addon list.
+     */
+    public static function settingsTitle(): string
+    {
+        return __('Inbox settings');
+    }
+
+    /**
      * @return array<int, array{title: string, description: string, fields: array<int, array<string, mixed>>}>
      */
     public static function settingsGroups(): array

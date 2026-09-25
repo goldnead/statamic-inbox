@@ -1,0 +1,108 @@
+{
+    "name": "goldnead/statamic-inbox",
+    "description": "Email conversations inside the Statamic Control Panel. Fetches an existing mailbox over IMAP, threads it into conversations, links them to LeadHub contacts and replies over the mailbox's own SMTP.",
+    "type": "statamic-addon",
+    "license": "proprietary",
+    "keywords": [
+        "statamic",
+        "statamic-addon",
+        "inbox",
+        "email",
+        "imap",
+        "crm"
+    ],
+    "authors": [
+        {
+            "name": "Adrian Goldner",
+            "email": "info@adriangoldner.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/goldnead/statamic-inbox/issues",
+        "source": "https://github.com/goldnead/statamic-inbox"
+    },
+    "require": {
+        "php": "^8.2",
+        "directorytree/imapengine": "^1.25",
+        "goldnead/statamic-brand-context": "^1.14",
+        "laravel/framework": "^12.40|^13.0",
+        "statamic/cms": "^6.0",
+        "symfony/html-sanitizer": "^7.1|^8.0",
+        "willdurand/email-reply-parser": "^2.10",
+        "zbateson/mail-mime-parser": "^3.0"
+    },
+    "require-dev": {
+        "goldnead/statamic-leadhub": "^2.13",
+        "goldnead/statamic-suppression": "^1.3",
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0|^5.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0|^5.0"
+    },
+    "suggest": {
+        "goldnead/statamic-leadhub": "Links conversations to CRM contacts, shows an Emails panel on the contact and writes received and sent mail to the contact timeline (2.13 or later). Without it conversations stand on their own address.",
+        "goldnead/statamic-suppression": "Refuses a reply to an address that hard-bounced or complained (1.3 or later). Without it nothing is checked before a reply goes out.",
+        "goldnead/statamic-email-templates": "Fills the reply form from a stored template with the contact's merge variables.",
+        "goldnead/statamic-activity": "Records inbox.email_received and inbox.email_sent in the shared activity feed.",
+        "goldnead/statamic-automations": "Adds an \"Email received\" trigger to the visual automation builder."
+    },
+    "conflict": {
+        "goldnead/statamic-leadhub": "<2.13",
+        "goldnead/statamic-suppression": "<1.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Goldnead\\StatamicInbox\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Goldnead\\StatamicInbox\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "statamic": {
+            "name": "Inbox",
+            "slug": "inbox",
+            "editions": ["pro"],
+            "description": "Your existing mailbox as conversations in the Control Panel, linked to LeadHub contacts.",
+            "url": "https://github.com/goldnead/statamic-inbox",
+            "developer": "Adrian Goldner",
+            "developer-url": "https://adriangoldner.dev"
+        },
+        "laravel": {
+            "providers": [
+                "Goldnead\\StatamicInbox\\ServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": [
+            "@php vendor/bin/pest"
+        ],
+        "test:mysql": [
+            "@php vendor/bin/pest -c phpunit.mysql.xml"
+        ],
+        "lint": [
+            "@php vendor/bin/pint --test"
+        ],
+        "fix": [
+            "@php vendor/bin/pint"
+        ],
+        "analyse": [
+            "@php vendor/bin/phpstan analyse --memory-limit=1G"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "pixelfear/composer-dist-plugin": true,
+            "composer/installers": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

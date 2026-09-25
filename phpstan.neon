@@ -1,0 +1,35 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 5
+
+    paths:
+        - src
+        - config
+
+    # leadhub and suppression are `suggest`s. They sit in require-dev, so the
+    # bridges to them are analysed against the real classes. email-templates,
+    # activity and automations are not installed here; code that touches them
+    # guards on class_exists and PHPStan cannot see the class at all, which is
+    # a finding about the environment rather than about the code.
+    reportUnmatchedIgnoredErrors: false
+
+    treatPhpDocTypesAsCertain: false
+
+    ignoreErrors:
+        -
+            identifier: class.notFound
+            message: '#Goldnead\\(EmailTemplates|Activity|StatamicAutomations)\\#'
+
+        # Larastan only knows the host app's config directory; this is the
+        # package's own, where env() is exactly right.
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: config/inbox.php
+
+        # Older statamic/cms releases give the parent's $vite a narrower
+        # docblock than the bundle array; newer ones do not. Tolerate both.
+        -
+            identifier: property.defaultValue
+            path: src/ServiceProvider.php

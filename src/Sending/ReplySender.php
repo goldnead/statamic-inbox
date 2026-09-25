@@ -81,7 +81,7 @@ class ReplySender
             'in_reply_to' => $parent?->message_id,
             'references' => implode(' ', $references) ?: null,
             'from_email' => strtolower($mailbox->email),
-            'from_name' => $mailbox->name,
+            'from_name' => $mailbox->senderName() ?: null,
             'to' => [['email' => $recipient, 'name' => null]],
             'cc' => [],
             'subject' => MessageIds::fit(Subject::reply($conversation->subject !== '' ? $conversation->subject : (string) $parent?->subject)),

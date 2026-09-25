@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicInbox\Models;
 
 use Goldnead\BrandContext\Concerns\HasBrand;
+use Goldnead\BrandContext\Contracts\SenderIdentityResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property int $brand_id
  * @property string $name
  * @property string $email
+ * @property string|null $from_name
  * @property string $imap_host
  * @property int $imap_port
  * @property string $imap_encryption
@@ -115,6 +117,26 @@ class Mailbox extends Model
     public function isBroken(): bool
     {
         return $this->last_error !== null && $this->last_error_scope === 'mailbox';
+    }
+
+    /**
+     * The display name replies go out under: the mailbox's own sender name,
+     * else the brand's sender name, else none (the bare address). Never
+     * `name`, which is only the label in the CP list.
+     */
+    public function senderName(): string
+    {
+        $own = trim((string) $this->from_name);
+
+        if ($own !== '') {
+            return $own;
+        }
+
+        try {
+            return trim((string) app(SenderIdentityResolver::class)->resolve((int) $this->brand_id)->fromName);
+        } catch (\Throwable) {
+            return '';
+        }
     }
 
     /** The part after the @, used for our own Message-IDs. */

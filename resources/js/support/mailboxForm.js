@@ -17,6 +17,7 @@ export function fromMailbox(mailbox = {}) {
     return {
         name: mailbox.name ?? '',
         email: mailbox.email ?? '',
+        from_name: mailbox.from_name ?? '',
         imap_host: mailbox.imap_host ?? '',
         imap_port: mailbox.imap_port ?? 993,
         imap_encryption: mailbox.imap_encryption ?? 'ssl',

@@ -310,6 +310,8 @@ class MailboxesController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
+            // The name replies are sent under; `name` is only the list label.
+            'from_name' => ['nullable', 'string', 'max:255'],
             'imap_host' => ['required', 'string', 'max:255', $host],
             'imap_port' => ['required', 'integer', 'between:1,65535'],
             'imap_encryption' => ['required', 'in:ssl,tls,starttls,none'],

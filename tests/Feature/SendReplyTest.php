@@ -6,6 +6,7 @@
  * is not stored a second time when the next fetch meets it in Sent.
  */
 
+use Goldnead\BrandContext\Contracts\SenderIdentityResolver;
 use Goldnead\StatamicInbox\Events\InboxMessageSent;
 use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Models\Conversation;
@@ -156,7 +157,7 @@ it('falls back to the brand sender name, and to the bare address, but not to the
     app(ReplySender::class)->send($conversation, 'Bis Dienstag!');
 
     $from = onlySent($this->smtp)->getOriginalMessage()->getFrom()[0];
-    $brandName = app(Goldnead\BrandContext\Contracts\SenderIdentityResolver::class)->resolve(null)->fromName;
+    $brandName = app(SenderIdentityResolver::class)->resolve(null)->fromName;
 
     expect($from->getAddress())->toBe('adrian@goldner.test')
         ->and($from->getName())->not->toBe('Coaching (intern)')

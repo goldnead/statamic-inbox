@@ -90,7 +90,7 @@ class SendReply implements ShouldQueue
         $mailbox = $message->mailbox;
 
         $email = (new Email)
-            ->from(new Address($mailbox->email, (string) $mailbox->name))
+            ->from(new Address($mailbox->email, $mailbox->senderName()))
             ->subject($message->subject)
             ->text((string) $message->text)
             ->date($message->sent_at ?? Carbon::now());

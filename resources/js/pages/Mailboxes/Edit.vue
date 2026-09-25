@@ -353,6 +353,11 @@ function onThisPage(problem) {
                             </Field>
                         </div>
 
+                        <Field id="from_name" :label="__('Sender name')" :error="errors.from_name"
+                            :instructions="__('The name recipients see next to the address, e.g. Adrian Goldner. Empty uses the brand sender name.')">
+                            <Input id="from_name" v-model="form.from_name" />
+                        </Field>
+
                         <div class="grid sm:grid-cols-2 gap-6 *:min-w-0">
                             <Field id="username" :label="__('Username')" required :error="errors.username"
                                 :instructions="__('Usually the email address.')">

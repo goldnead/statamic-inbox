@@ -47,9 +47,8 @@ function mailboxForm(array $overrides = []): array
 }
 
 it('detects the Sent folder on the server when the form leaves it empty', function () {
-    // The fake hands out one client per mailbox id; the next id is 1.
-    $this->imap->clients[1] = (new FakeMailboxClient);
-    $this->imap->clients[1]->sentFolder = 'Gesendete Objekte';
+    // Whatever id the new mailbox gets, its server reports this Sent folder.
+    $this->imap->configureNewClients(fn (FakeMailboxClient $client) => $client->sentFolder = 'Gesendete Objekte');
 
     $this->actingAs(inboxCpUser(['manage inbox mailboxes']))
         ->postJson('/cp/inbox/mailboxes', mailboxForm())

@@ -8,6 +8,7 @@
 
 use Goldnead\Leadhub\Models\Contact;
 use Goldnead\StatamicInbox\Models\BlockRule;
+use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\SkippedMessage;
 use Illuminate\Support\Carbon;
@@ -28,27 +29,30 @@ function inboxPageProps($test, string $url): array
     return $test->actingAs(inboxCpUser(['view inbox', 'manage inbox mailboxes']))->get($url)->viewData('page')['props'];
 }
 
-it('keeps new conversations out of the open tab', function () {
+/** The rows the listing asks for (the page itself loads them as JSON). */
+function inboxRows($test, string $tab): array
+{
+    return collect($test->actingAs(inboxCpUser(['view inbox']))->getJson('/cp/inbox?tab='.$tab)->json('data'))
+        ->pluck('counterpart_email')->sort()->values()->all();
+}
+
+it('keeps new conversations out of the open tab, and counts them on their own tab', function () {
     $props = inboxPageProps($this, '/cp/inbox');
 
-    expect(collect($props['conversations']['data'])->pluck('counterpart_email')->all())->toBe(['anna.beispiel@example.com'])
-        ->and($props['newCount'])->toBe(2);
+    expect(inboxRows($this, 'open'))->toBe(['anna.beispiel@example.com'])
+        ->and($props['tabCounts']['open'])->toBe(1)
+        ->and($props['tabCounts']['new'])->toBe(2);
 });
 
 it('lists new conversations in the Neu tab', function () {
-    $props = inboxPageProps($this, '/cp/inbox?tab=new');
-
-    expect($props['tab'])->toBe('new')
-        ->and(collect($props['conversations']['data'])->pluck('counterpart_email')->sort()->values()->all())
-        ->toBe(['bob@example.org', 'carla@example.net']);
+    expect(inboxPageProps($this, '/cp/inbox?tab=new')['tab'])->toBe('new')
+        ->and(inboxRows($this, 'new'))->toBe(['bob@example.org', 'carla@example.net']);
 });
 
 it('keeps new conversations out of the snoozed tab', function () {
-    Goldnead\StatamicInbox\Models\Conversation::query()->update(['snoozed_until' => Carbon::now()->addDay()]);
+    Conversation::query()->update(['snoozed_until' => Carbon::now()->addDay()]);
 
-    $props = inboxPageProps($this, '/cp/inbox?tab=snoozed');
-
-    expect(collect($props['conversations']['data'])->pluck('counterpart_email')->all())->toBe(['anna.beispiel@example.com']);
+    expect(inboxRows($this, 'snoozed'))->toBe(['anna.beispiel@example.com']);
 });
 
 it('shows skipped bulk mail of the last 30 days, the blocklist and the switches on the mailbox page', function () {

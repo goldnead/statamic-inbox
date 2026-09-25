@@ -15,7 +15,9 @@ beforeEach(function () {
     $this->mailbox = inboxMailbox();
 });
 
-it('imports a new message into a new open, unread conversation', function () {
+// Anna is nobody the mailbox knows yet: since the filter (0.2) a first
+// contact is "new", not "open" (RelevanceTest covers when it is open).
+it('imports a new message into a new unread conversation', function () {
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml']]);
 
     $message = Message::sole();
@@ -35,7 +37,7 @@ it('imports a new message into a new open, unread conversation', function () {
     expect($conversation->mailbox_id)->toBe($this->mailbox->id)
         ->and($conversation->counterpart_email)->toBe('anna.beispiel@example.com')
         ->and($conversation->subject)->toBe('Frage zum Coaching')
-        ->and($conversation->status)->toBe('open')
+        ->and($conversation->status)->toBe('new')
         ->and($conversation->unread)->toBeTrue()
         ->and($conversation->last_message_at->equalTo($message->sent_at))->toBeTrue();
 });
@@ -137,7 +139,8 @@ it('ends a snooze when a new incoming message arrives', function () {
     $client = deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml']]);
 
     $conversation = Conversation::sole();
-    $conversation->update(['snoozed_until' => Carbon::parse('2026-10-01 08:00:00'), 'unread' => false]);
+    // Accepted, so the arriving mail opens it (an unknown sender would stay "new").
+    $conversation->update(['snoozed_until' => Carbon::parse('2026-10-01 08:00:00'), 'unread' => false, 'accepted_at' => Carbon::now()]);
 
     $client->deliver('INBOX', mailFixture('03-gmail-reply.eml'));
     app(MailboxFetcher::class)->fetch($this->mailbox->fresh());

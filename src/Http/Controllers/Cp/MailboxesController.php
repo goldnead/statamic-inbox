@@ -4,7 +4,9 @@ namespace Goldnead\StatamicInbox\Http\Controllers\Cp;
 
 use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Contracts\TransportFactory;
+use Goldnead\StatamicInbox\Models\BlockRule;
 use Goldnead\StatamicInbox\Models\Mailbox;
+use Goldnead\StatamicInbox\Models\SkippedMessage;
 use Goldnead\StatamicInbox\Support\ErrorExplainer;
 use Goldnead\StatamicInbox\Support\HostGuard;
 use Goldnead\StatamicInbox\Support\Redactor;
@@ -81,7 +83,45 @@ class MailboxesController extends Controller
             'mailbox' => $this->present($mailbox),
             'isNew' => false,
             ...$this->formProps($mailbox),
+            // What the filter did: bulk mail left out lately, and the hidden
+            // senders and domains, each removable.
+            'skippedBulk' => SkippedMessage::query()
+                ->where('mailbox_id', $mailbox->id)
+                ->whereIn('reason', SkippedMessage::BULK_REASONS)
+                ->where('skipped_at', '>=', Carbon::now()->subDays(30))
+                ->count(),
+            'rules' => BlockRule::query()->where('mailbox_id', $mailbox->id)->orderBy('type')->orderBy('value')->get()
+                ->map(fn (BlockRule $rule) => [
+                    'id' => $rule->id,
+                    'type' => $rule->type,
+                    'value' => $rule->value,
+                    'delete_url' => cp_route('inbox.mailboxes.rules.destroy', [$mailbox->id, $rule->id]),
+                ])->all(),
         ]);
+    }
+
+    /**
+     * "Entfernen" on a hidden sender or domain: future mail comes through
+     * again. What the rule held back is forgotten, so a later import (a new
+     * UID, or a folder that is read again) can bring it back.
+     */
+    public function destroyRule(int $inboxMailbox, int $inboxRule): JsonResponse
+    {
+        Gate::authorize('manage inbox mailboxes');
+
+        $mailbox = Mailbox::query()->findOrFail($inboxMailbox);
+        $rule = BlockRule::query()->where('mailbox_id', $mailbox->id)->findOrFail($inboxRule);
+
+        SkippedMessage::query()
+            ->where('mailbox_id', $mailbox->id)
+            ->where('reason', 'blocked')
+            ->get()
+            ->filter(fn (SkippedMessage $skip) => $skip->sender !== null && $rule->matches($skip->sender))
+            ->each->delete();
+
+        $rule->delete();
+
+        return response()->json(['deleted' => true]);
     }
 
     /** @return array<string, mixed> */
@@ -325,12 +365,24 @@ class MailboxesController extends Controller
             'append_sent' => ['nullable', 'boolean'],
             'import_since' => ['nullable', 'date'],
             'active' => ['nullable', 'boolean'],
+            // The filter: skip bulk mail, and further own addresses.
+            'skip_bulk' => ['nullable', 'boolean'],
+            'aliases' => ['nullable', 'array', 'max:20'],
+            'aliases.*' => ['email', 'max:255'],
         ]);
 
-        foreach (['inbox_folder', 'append_sent', 'import_since', 'active', 'sent_folder'] as $optional) {
+        foreach (['inbox_folder', 'append_sent', 'import_since', 'active', 'sent_folder', 'skip_bulk'] as $optional) {
             if (! array_key_exists($optional, $data) || $data[$optional] === null) {
                 unset($data[$optional]);
             }
+        }
+
+        if (array_key_exists('aliases', $data)) {
+            $email = strtolower(trim((string) $data['email']));
+            $data['aliases'] = array_values(array_unique(array_filter(
+                array_map(fn ($alias) => strtolower(trim((string) $alias)), (array) ($data['aliases'] ?? [])),
+                fn ($alias) => $alias !== '' && $alias !== $email
+            )));
         }
 
         return $data;
@@ -353,6 +405,8 @@ class MailboxesController extends Controller
         return [
             ...collect($mailbox->toArray())->except(['password'])->all(),
             'import_since' => $mailbox->import_since?->toDateString(),
+            'skip_bulk' => (bool) ($mailbox->skip_bulk ?? true),
+            'aliases' => array_values((array) ($mailbox->aliases ?? [])),
             // What went wrong, in words and with the fix (ErrorExplainer).
             'problem' => app(ErrorExplainer::class)->explain($mailbox->last_error, ErrorExplainer::FETCH, $mailbox),
             'has_password' => (string) $mailbox->getRawOriginal('password') !== '',

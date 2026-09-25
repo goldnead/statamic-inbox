@@ -36,6 +36,9 @@ it('links an outgoing-only conversation through the recipient, not the mailbox',
 it('never creates a contact for an unknown address', function () {
     Contact::create(['email' => 'someone-else@example.com']);
 
+    // Keeps the newsletter, so an unknown bulk sender is covered too.
+    $this->mailbox->update(['skip_bulk' => false]);
+
     deliverAndFetch($this->imap, $this->mailbox, [
         'INBOX' => ['07-html-tracking.eml', '08-no-message-id.eml'],
     ]);

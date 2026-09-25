@@ -28,7 +28,8 @@ class Threader
             ?? $this->bySubject($mailbox, $parsed, $counterpart);
     }
 
-    protected function byHeaders(Mailbox $mailbox, ParsedMessage $parsed): ?Conversation
+    /** In-Reply-To or References name a stored message. Also the filter's exception. */
+    public function byHeaders(Mailbox $mailbox, ParsedMessage $parsed): ?Conversation
     {
         foreach ($parsed->ancestors() as $id) {
             $message = Message::query()

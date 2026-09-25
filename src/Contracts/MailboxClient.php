@@ -27,6 +27,12 @@ interface MailboxClient
     public function fetchRaw(string $folder, int $uid): string;
 
     /**
+     * The header block of one message only (BODY.PEEK[HEADER]), without
+     * marking it read. What `inbox:reclassify` needs, and nothing more.
+     */
+    public function fetchHeaders(string $folder, int $uid): string;
+
+    /**
      * Store a message in a folder (the Sent copy of a reply).
      *
      * @param  array<int, string>  $flags

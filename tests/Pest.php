@@ -3,6 +3,7 @@
 use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Contracts\TransportFactory;
 use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
+use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Tests\Fakes\ArrayTransportFactory;
 use Goldnead\StatamicInbox\Tests\Fakes\FakeMailboxClient;
@@ -97,6 +98,18 @@ function deliverAndFetch(FakeMailboxClientFactory $imap, Mailbox $mailbox, array
     app(MailboxFetcher::class)->fetch($mailbox->fresh());
 
     return $client;
+}
+
+/**
+ * Take every first contact out of "Neu", as "Übernehmen" would. For tests
+ * about the listing and the pages, where the fixtures' unknown senders would
+ * otherwise all sit in the "Neu" tab since the filter (0.2).
+ */
+function acceptAllConversations(): void
+{
+    Conversation::query()
+        ->where('status', 'new')
+        ->update(['status' => 'open', 'accepted_at' => now()]);
 }
 
 /**

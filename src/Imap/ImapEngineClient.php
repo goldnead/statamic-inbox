@@ -73,6 +73,19 @@ class ImapEngineClient implements MailboxClient
         return (string) $message;
     }
 
+    public function fetchHeaders(string $folder, int $uid): string
+    {
+        // withHeaders() alone: BODY.PEEK[HEADER], no body, \Seen untouched.
+        $message = $this->folder($folder)->messages()->withHeaders()->find($uid);
+
+        if ($message === null) {
+            throw new RuntimeException("No message with UID {$uid} in {$folder}.");
+        }
+
+        // Fetched without a body, the message's string form is its header block.
+        return rtrim((string) preg_split('/\r?\n\r?\n/', (string) $message, 2)[0])."\r\n\r\n";
+    }
+
     public function append(string $folder, string $raw, array $flags = ['\\Seen']): void
     {
         $this->folder($folder)->messages()->append($raw, $flags);

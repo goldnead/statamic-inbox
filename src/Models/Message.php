@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property bool $has_remote_images
  * @property string|null $send_error
  * @property string|null $filed_error
+ * @property array<string, mixed>|null $filter_headers
  * @property string|null $message_id_full
  * @property-read Conversation $conversation
  * @property-read Mailbox $mailbox
@@ -64,6 +65,7 @@ class Message extends Model
             'sent_at' => 'datetime',
             'imap_uid' => 'integer',
             'has_remote_images' => 'boolean',
+            'filter_headers' => 'array',
         ];
     }
 

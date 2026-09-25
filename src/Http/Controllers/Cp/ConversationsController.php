@@ -5,9 +5,11 @@ namespace Goldnead\StatamicInbox\Http\Controllers\Cp;
 use Goldnead\StatamicInbox\Ai\DraftSuggester;
 use Goldnead\StatamicInbox\Ai\DraftUnavailable;
 use Goldnead\StatamicInbox\Exceptions\ReplyRefused;
+use Goldnead\StatamicInbox\Filtering\ConversationPurger;
 use Goldnead\StatamicInbox\Integrations\EmailTemplateFiller;
 use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Models\Attachment;
+use Goldnead\StatamicInbox\Models\BlockRule;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\FetchFailure;
 use Goldnead\StatamicInbox\Models\Mailbox;
@@ -35,7 +37,8 @@ class ConversationsController extends Controller
 {
     use QueriesFilters;
 
-    public const TABS = ['open', 'waiting', 'closed', 'snoozed'];
+    /** "new" holds first contacts from unknown people; the others only relevant ones. */
+    public const TABS = ['open', 'waiting', 'closed', 'snoozed', 'new'];
 
     /** The filter key InboxMailbox answers to. */
     public const FILTER_KEY = 'inbox-conversations';
@@ -103,7 +106,7 @@ class ConversationsController extends Controller
                     'latest' => (int) $f->getAttribute('latest'),
                 ])
                 ->all(),
-            'unreadCount' => Conversation::query()->where('unread', true)->count(),
+            'unreadCount' => Conversation::query()->where('unread', true)->where('status', '!=', Conversation::STATUS_NEW)->count(),
             'canReply' => Gate::allows('reply inbox'),
             'canManageMailboxes' => Gate::allows('manage inbox mailboxes'),
             'mailboxesUrl' => cp_route('inbox.mailboxes.index'),
@@ -131,7 +134,7 @@ class ConversationsController extends Controller
         $now = Carbon::now();
 
         if ($tab === 'snoozed') {
-            return $query->where('snoozed_until', '>', $now);
+            return $query->where('snoozed_until', '>', $now)->where('status', '!=', Conversation::STATUS_NEW);
         }
 
         return $query->where('status', $tab)
@@ -346,9 +349,63 @@ class ConversationsController extends Controller
 
         $contact = $contacts->create($conversation->counterpart_email, $name);
 
-        $conversation->forceFill(['contact_id' => (int) $contact['id']])->save();
+        $conversation->forceFill([
+            'contact_id' => (int) $contact['id'],
+            // A contact makes it relevant: out of "Neu".
+            'status' => $conversation->status === Conversation::STATUS_NEW ? Conversation::STATUS_OPEN : $conversation->status,
+        ])->save();
 
         return response()->json(['contact' => $contact, 'conversation' => $conversation->fresh()], 201);
+    }
+
+    /** "Übernehmen": relevant without a CRM contact, for good. */
+    public function accept(int $inboxConversation): JsonResponse
+    {
+        Gate::authorize('reply inbox');
+
+        $conversation = Conversation::query()->findOrFail($inboxConversation);
+
+        $conversation->forceFill([
+            'accepted_at' => $conversation->accepted_at ?? Carbon::now(),
+            'status' => $conversation->status === Conversation::STATUS_NEW ? Conversation::STATUS_OPEN : $conversation->status,
+        ])->save();
+
+        return response()->json(['conversation' => $conversation->fresh()]);
+    }
+
+    /**
+     * "Absender ausblenden" / "Domain ausblenden": a rule on the mailbox's
+     * blocklist, and every conversation it covers deleted in Statamic with
+     * its files. The mails stay on the server.
+     */
+    public function block(Request $request, int $inboxConversation, ConversationPurger $purger): JsonResponse
+    {
+        Gate::authorize('reply inbox');
+
+        $conversation = Conversation::query()->with('mailbox')->findOrFail($inboxConversation);
+        $scope = $request->validate(['scope' => ['required', 'in:sender,domain']])['scope'];
+
+        $mailbox = $conversation->mailbox;
+        $address = strtolower($conversation->counterpart_email);
+        $value = $scope === BlockRule::SENDER ? $address : BlockRule::domainOf($address);
+
+        $ownDomains = array_map(fn ($own) => BlockRule::domainOf($own), $mailbox->ownAddresses());
+
+        if ($value === '' || ($scope === BlockRule::DOMAIN && in_array($value, $ownDomains, true))) {
+            return response()->json(['message' => __('Your own domain cannot be hidden.')], 422);
+        }
+
+        $rule = BlockRule::query()->firstOrCreate(['mailbox_id' => $mailbox->id, 'type' => $scope, 'value' => $value]);
+
+        $deleted = $rule->applyTo(Conversation::query()->where('mailbox_id', $mailbox->id))->get();
+        $count = $deleted->count();
+        $purger->purge($deleted, 'blocked');
+
+        return response()->json([
+            'rule' => $rule->only(['id', 'type', 'value']),
+            'deleted' => $count,
+            'redirect' => cp_route('inbox.index', ['tab' => 'new']),
+        ]);
     }
 
     public function reply(Request $request, int $inboxConversation, ReplySender $sender, ErrorExplainer $explainer): JsonResponse

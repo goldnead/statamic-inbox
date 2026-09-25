@@ -41,5 +41,12 @@ it('logs in, finds Sent and reads the newest INBOX message', function () {
         $this->markTestIncomplete('INBOX has no message from the last 7 days to read.');
     }
 
-    expect($client->fetchRaw('INBOX', end($uids)))->toContain('From:');
+    expect($client->fetchRaw('INBOX', end($uids)))->toContain('From:')
+        ->and($client->uidValidity('INBOX'))->toBeInt();
+
+    // What inbox:reclassify reads: the header block, and only that.
+    $headers = $client->fetchHeaders('INBOX', end($uids));
+
+    expect($headers)->toContain('From:')
+        ->and(substr_count(rtrim($headers), "\r\n\r\n"))->toBe(0);
 });

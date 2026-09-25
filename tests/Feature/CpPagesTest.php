@@ -32,13 +32,14 @@ it('renders the inbox page with columns, the mailbox filter and what the fetch c
         'attempts' => 3, 'gave_up_at' => Carbon::now(),
     ]);
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml']]);
+    acceptAllConversations();
 
     $page = inertiaPage($this->actingAs(inboxCpUser(['view inbox']))->get('/cp/inbox'));
 
     expect($page['component'])->toBe('inbox::Conversations/Index')
         ->and(collect($page['props']['columns'])->pluck('field')->all())->toBe(['counterpart', 'subject', 'mailbox', 'last_message_at'])
         ->and(collect($page['props']['filters'])->pluck('handle')->all())->toContain('inbox_mailbox')
-        ->and($page['props']['tabCounts'])->toBe(['open' => 1, 'waiting' => 0, 'closed' => 0, 'snoozed' => 0])
+        ->and($page['props']['tabCounts'])->toBe(['open' => 1, 'waiting' => 0, 'closed' => 0, 'snoozed' => 0, 'new' => 0])
         ->and(collect($page['props']['mailboxes'])->firstWhere('name', 'Chor')['last_error_scope'])->toBe('mailbox')
         ->and($page['props']['failures'])->toBe([['mailbox_id' => $this->mailbox->id, 'folder' => 'INBOX', 'count' => 1, 'latest' => FetchFailure::sole()->id]])
         ->and(collect($page['props']['mailboxes'])->firstWhere('name', 'Chor')['problem']['title'])->toBe('The app password for Chor was refused')
@@ -56,6 +57,7 @@ it('answers the listing with rows and meta.columns, per tab', function () {
     deliverAndFetch($this->imap, $this->mailbox, [
         'INBOX' => ['01-new-thread.eml', '06-same-subject-other-sender.eml'],
     ]);
+    acceptAllConversations();
     Conversation::query()->where('counterpart_email', 'anna.beispiel@example.com')->update(['status' => 'waiting']);
 
     $user = inboxCpUser(['view inbox']);
@@ -71,6 +73,7 @@ it('answers the listing with rows and meta.columns, per tab', function () {
 
 it('lists snoozed conversations only under Geschlummert', function () {
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml']]);
+    acceptAllConversations();
     Conversation::query()->update(['snoozed_until' => Carbon::now()->addDay()]);
 
     $user = inboxCpUser(['view inbox']);
@@ -80,9 +83,11 @@ it('lists snoozed conversations only under Geschlummert', function () {
 });
 
 it('searches by name and filters by mailbox through the core filter', function () {
-    $chor = inboxMailbox(['name' => 'Chor', 'email' => 'chor@goldner.test']);
+    // The newsletter is bulk mail; this mailbox keeps it, the filter is not the point here.
+    $chor = inboxMailbox(['name' => 'Chor', 'email' => 'chor@goldner.test', 'skip_bulk' => false]);
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml']]);
     deliverAndFetch($this->imap, $chor, ['INBOX' => ['07-html-tracking.eml']]);
+    acceptAllConversations();
 
     $user = inboxCpUser(['view inbox']);
     $filters = base64_encode(json_encode(['inbox_mailbox' => ['mailbox' => (string) $chor->id]]));

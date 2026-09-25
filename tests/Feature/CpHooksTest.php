@@ -55,10 +55,15 @@ it('lists conversations with a constant number of queries', function () {
         return count(DB::getQueryLog());
     };
 
+    // Every row in the open tab, the newsletter included: the rows are the point.
+    $this->mailbox->update(['skip_bulk' => false]);
+
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml']]);
+    acceptAllConversations();
     $few = $count();
 
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['06-same-subject-other-sender.eml', '07-html-tracking.eml', '08-no-message-id.eml']]);
+    acceptAllConversations();
     $many = $count();
 
     expect(Conversation::count())->toBe(4)
@@ -78,6 +83,8 @@ it('shows the excerpt of the newest message in the list', function () {
 
 it('adds a Postfach nav item with the unread count for view inbox', function () {
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['01-new-thread.eml', '06-same-subject-other-sender.eml']]);
+    // Two unread relevant ones; first contacts are counted apart (RelevanceTest).
+    acceptAllConversations();
 
     expect($this->navCallbacks)->not->toBeEmpty();
 

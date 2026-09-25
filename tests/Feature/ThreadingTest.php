@@ -97,7 +97,8 @@ it('opens a new conversation for an unrelated message', function () {
 
     expect($carla->id)->not->toBe($this->thread->id)
         ->and($carla->subject)->toBe('Termin?')
-        ->and($carla->status)->toBe('open')
+        // Unknown sender: a first contact, "new" since the filter (0.2).
+        ->and($carla->status)->toBe('new')
         ->and(Conversation::count())->toBe(2);
 });
 

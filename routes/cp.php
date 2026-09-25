@@ -31,6 +31,12 @@ Route::prefix('inbox')->name('inbox.')->group(function () {
     Route::post('conversations/{inboxConversation}/contact', [ConversationsController::class, 'createContact'])
         ->whereNumber('inboxConversation')->middleware('can:reply inbox')->name('conversations.contact');
 
+    Route::post('conversations/{inboxConversation}/accept', [ConversationsController::class, 'accept'])
+        ->whereNumber('inboxConversation')->middleware('can:reply inbox')->name('conversations.accept');
+
+    Route::post('conversations/{inboxConversation}/block', [ConversationsController::class, 'block'])
+        ->whereNumber('inboxConversation')->middleware('can:reply inbox')->name('conversations.block');
+
     Route::get('attachments/{inboxAttachment}', [AttachmentsController::class, 'show'])
         ->whereNumber('inboxAttachment')->middleware('can:view inbox')->name('attachments.show');
 
@@ -45,5 +51,7 @@ Route::prefix('inbox')->name('inbox.')->group(function () {
             ->whereNumber('inboxMailbox')->name('mailboxes.update');
         Route::post('mailboxes/{inboxMailbox}/test', [MailboxesController::class, 'test'])
             ->whereNumber('inboxMailbox')->name('mailboxes.test');
+        Route::delete('mailboxes/{inboxMailbox}/rules/{inboxRule}', [MailboxesController::class, 'destroyRule'])
+            ->whereNumber(['inboxMailbox', 'inboxRule'])->name('mailboxes.rules.destroy');
     });
 });

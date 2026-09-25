@@ -14,6 +14,8 @@ final class ParsedMessage
      * @param  list<array{email: string, name: string|null}>  $to
      * @param  list<array{email: string, name: string|null}>  $cc
      * @param  list<array{filename: string, mime: string, content_id: string|null, content: string}>  $attachments
+     * @param  list<array{email: string, name: string|null}>  $bcc
+     * @param  array<string, mixed>  $filterHeaders  see MessageParser::filterHeaders()
      */
     public function __construct(
         public readonly string $messageId,
@@ -29,6 +31,8 @@ final class ParsedMessage
         public readonly ?string $html,
         public readonly ?CarbonImmutable $sentAt,
         public readonly array $attachments = [],
+        public readonly array $bcc = [],
+        public readonly array $filterHeaders = [],
     ) {}
 
     /**

@@ -6,12 +6,15 @@ use Goldnead\BrandContext\Facades\BrandContext;
 use Goldnead\StatamicInbox\Contracts\MailboxClient;
 use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Events\InboxMessageReceived;
+use Goldnead\StatamicInbox\Filtering\BulkDetector;
+use Goldnead\StatamicInbox\Filtering\Relevance;
 use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Models\Attachment;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\FetchFailure;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
+use Goldnead\StatamicInbox\Models\SkippedMessage;
 use Goldnead\StatamicInbox\Parsing\HtmlCleaner;
 use Goldnead\StatamicInbox\Parsing\MessageParser;
 use Goldnead\StatamicInbox\Parsing\ParsedMessage;
@@ -57,6 +60,8 @@ class MailboxFetcher
         protected QuoteStripper $quotes,
         protected Threader $threader,
         protected LeadHubContacts $contacts,
+        protected BulkDetector $bulk,
+        protected Relevance $relevance,
     ) {}
 
     /** @return int the number of messages stored */
@@ -251,9 +256,18 @@ class MailboxFetcher
             return false;
         }
 
-        $mine = strtolower($mailbox->email);
-        $outgoing = $sentFolder || $parsed->fromEmail === $mine;
-        $counterpart = $outgoing ? $this->recipient($parsed, $mine) : $parsed->fromEmail;
+        $own = $mailbox->ownAddresses();
+        $outgoing = $sentFolder || in_array($parsed->fromEmail, $own, true);
+        $counterpart = $outgoing ? $this->recipient($parsed, $own) : $parsed->fromEmail;
+
+        $skip = $this->skipReason($mailbox, $parsed, $outgoing, $counterpart, $own);
+
+        if ($skip !== null) {
+            $this->recordSkip($mailbox, $key, $folder, $uid, $counterpart, $skip);
+
+            return false;
+        }
+
         $cleaned = $this->html->clean($parsed->html);
 
         // A Date header from the future would keep a conversation on top of
@@ -289,6 +303,7 @@ class MailboxFetcher
                     'folder' => MessageIds::fit($folder),
                     'imap_uid' => $uid,
                     'has_remote_images' => $cleaned['has_remote_images'],
+                    'filter_headers' => $parsed->filterHeaders,
                 ]);
 
                 $this->storeAttachments($message, $parsed, $written);
@@ -314,24 +329,83 @@ class MailboxFetcher
         return true;
     }
 
+    /** Stored, or deliberately left out: either way not again. */
     protected function known(Mailbox $mailbox, string $key): bool
     {
-        return Message::query()
-            ->where('mailbox_id', $mailbox->id)
-            ->where('message_id', $key)
-            ->exists();
+        return Message::query()->where('mailbox_id', $mailbox->id)->where('message_id', $key)->exists()
+            || SkippedMessage::query()->where('mailbox_id', $mailbox->id)->where('message_id', $key)->exists();
     }
 
-    /** The other side of an outgoing mail: the first recipient that is not us. */
-    protected function recipient(ParsedMessage $parsed, string $mine): string
+    /**
+     * The other side of an outgoing mail: the first recipient that is none
+     * of our own addresses. Empty for a mail to yourself.
+     *
+     * @param  list<string>  $own
+     */
+    protected function recipient(ParsedMessage $parsed, array $own): string
     {
-        foreach ([...$parsed->to, ...$parsed->cc] as $address) {
-            if ($address['email'] !== $mine) {
+        foreach ([...$parsed->to, ...$parsed->cc, ...$parsed->bcc] as $address) {
+            if (! in_array($address['email'], $own, true)) {
                 return $address['email'];
             }
         }
 
-        return $parsed->to[0]['email'] ?? '';
+        return '';
+    }
+
+    /**
+     * Why this mail is left out, or null to store it. See the filter spec
+     * (TASKS/inbox-filter-spec-2026-09-25.md), stage 1.
+     *
+     * @param  list<string>  $own
+     */
+    protected function skipReason(Mailbox $mailbox, ParsedMessage $parsed, bool $outgoing, string $counterpart, array $own): ?string
+    {
+        // Mail to yourself (or between your own aliases) is no conversation.
+        if ($counterpart === '' || in_array($counterpart, $own, true)) {
+            return 'self';
+        }
+
+        foreach ($mailbox->blockRules as $rule) {
+            if ($rule->matches($counterpart)) {
+                return 'blocked';
+            }
+        }
+
+        if (! $mailbox->skip_bulk) {
+            return null;
+        }
+
+        if ($outgoing) {
+            return $this->bulk->outgoingReason($parsed->filterHeaders, $own);
+        }
+
+        $reason = $this->bulk->reason($parsed->filterHeaders);
+
+        // The exceptions always win: a contact, or a reply in a conversation
+        // that already exists (a customer writing through a ticket system).
+        if ($reason !== null && ($this->contacts->idFor($counterpart) !== null || $this->threader->byHeaders($mailbox, $parsed) !== null)) {
+            return null;
+        }
+
+        return $reason;
+    }
+
+    protected function recordSkip(Mailbox $mailbox, string $key, string $folder, int $uid, string $counterpart, string $reason): void
+    {
+        try {
+            SkippedMessage::query()->create([
+                'mailbox_id' => $mailbox->id,
+                'folder' => MessageIds::fit($folder, 191),
+                'uid' => $uid,
+                'message_id' => $key,
+                'sender' => $counterpart === '' ? null : MessageIds::fit($counterpart),
+                'reason' => $reason,
+                'skipped_at' => Carbon::now(),
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // Another run recorded it a moment ago.
+        }
     }
 
     protected function open(Mailbox $mailbox, ParsedMessage $parsed, string $counterpart, Carbon $sentAt): Conversation
@@ -363,17 +437,24 @@ class MailboxFetcher
             $conversation->contact_id = $this->contacts->idFor($conversation->counterpart_email);
         }
 
+        $relevant = $this->relevance->isRelevant($conversation);
+
         if ($newest) {
             $conversation->last_message_at = $message->sent_at ?? Carbon::now();
 
             if ($message->direction === Message::IN) {
-                $conversation->status = Conversation::STATUS_OPEN;
+                // A first contact from someone unknown waits in "Neu".
+                $conversation->status = $relevant ? Conversation::STATUS_OPEN : Conversation::STATUS_NEW;
                 $conversation->unread = true;
                 $conversation->snoozed_until = null;
             } else {
                 $conversation->status = Conversation::STATUS_WAITING;
                 $conversation->unread = false;
             }
+        } elseif ($conversation->status === Conversation::STATUS_NEW && $relevant) {
+            // An older message that makes it relevant (your own answer,
+            // imported late) takes it out of "Neu".
+            $conversation->status = Conversation::STATUS_OPEN;
         }
 
         $conversation->save();

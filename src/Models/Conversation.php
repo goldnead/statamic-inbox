@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $snoozed_until
  * @property Carbon|null $last_message_at
  * @property bool $unread
+ * @property Carbon|null $accepted_at
  * @property-read Mailbox $mailbox
  */
 class Conversation extends Model
@@ -32,6 +33,12 @@ class Conversation extends Model
     public const STATUS_WAITING = 'waiting';
 
     public const STATUS_CLOSED = 'closed';
+
+    /**
+     * Not relevant (yet): a first contact from someone unknown. Shown only in
+     * the "Neu" tab and never counted in the menu.
+     */
+    public const STATUS_NEW = 'new';
 
     public const STATUSES = [self::STATUS_OPEN, self::STATUS_WAITING, self::STATUS_CLOSED];
 
@@ -54,6 +61,7 @@ class Conversation extends Model
             'snoozed_until' => 'datetime',
             'last_message_at' => 'datetime',
             'unread' => 'boolean',
+            'accepted_at' => 'datetime',
         ];
     }
 

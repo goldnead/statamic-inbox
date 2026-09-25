@@ -30,6 +30,8 @@ use Illuminate\Support\Carbon;
  * @property string $inbox_folder
  * @property string|null $sent_folder
  * @property bool $append_sent
+ * @property bool $skip_bulk
+ * @property list<string>|null $aliases
  * @property int $last_uid_inbox
  * @property int $last_uid_sent
  * @property Carbon|null $last_fetched_at
@@ -60,6 +62,7 @@ class Mailbox extends Model
         'last_uid_inbox' => 0,
         'last_uid_sent' => 0,
         'active' => true,
+        'skip_bulk' => true,
     ];
 
     protected function casts(): array
@@ -69,6 +72,8 @@ class Mailbox extends Model
             'imap_port' => 'integer',
             'smtp_port' => 'integer',
             'append_sent' => 'boolean',
+            'skip_bulk' => 'boolean',
+            'aliases' => 'array',
             'last_uid_inbox' => 'integer',
             'last_uid_sent' => 'integer',
             'uidvalidity_inbox' => 'integer',
@@ -137,6 +142,26 @@ class Mailbox extends Model
         } catch (\Throwable) {
             return '';
         }
+    }
+
+    /**
+     * Every address that is this mailbox: its own and its aliases, lower
+     * case. None of them is ever the other side of a conversation.
+     *
+     * @return list<string>
+     */
+    public function ownAddresses(): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            fn ($address) => strtolower(trim((string) $address)),
+            [$this->email, ...(array) ($this->aliases ?? [])]
+        ))));
+    }
+
+    /** @return HasMany<BlockRule, $this> */
+    public function blockRules(): HasMany
+    {
+        return $this->hasMany(BlockRule::class);
     }
 
     /** The part after the @, used for our own Message-IDs. */

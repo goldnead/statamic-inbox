@@ -11,7 +11,8 @@ use Goldnead\StatamicInbox\Parsing\HtmlCleaner;
 
 beforeEach(function () {
     $this->imap = fakeImap();
-    $this->mailbox = inboxMailbox();
+    // The tracking newsletter is bulk mail; kept here so its HTML can be checked.
+    $this->mailbox = inboxMailbox(['skip_bulk' => false]);
 });
 
 it('removes scripts, event handlers, javascript: links and iframes', function () {

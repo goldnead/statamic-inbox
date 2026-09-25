@@ -8,6 +8,7 @@
  */
 
 use Goldnead\Leadhub\Models\Contact;
+use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Sending\ReplySender;
 use Goldnead\StatamicInbox\ServiceProvider;
@@ -68,10 +69,10 @@ it('keeps an answered conversation relevant when the next mail comes in', functi
     $client = deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['08-no-message-id.eml']]);
     app(ReplySender::class)->send(Conversation::sole(), 'Gern, im Oktober geht es.');
 
-    $answer = "In-Reply-To: <".Conversation::sole()->messages()->where('direction', 'out')->value('message_id').">\n"
-        .str_replace(['Subject: Termin?', 'Date: Thu, 24 Sep 2026 16:45:00 +0200'], ['Subject: Re: Termin?', 'Date: Fri, 25 Sep 2026 08:00:00 +0200'], mailFixture('08-no-message-id.eml'));
+    $answer = 'In-Reply-To: <'.Conversation::sole()->messages()->where('direction', 'out')->value('message_id').">\n"
+        .str_replace(['Subject: Termin?', 'Date: Thu, 24 Sep 2026 16:45:00 +0200'], ['Subject: Re: Termin?', 'Date: Fri, 25 Sep 2026 14:30:00 +0200'], mailFixture('08-no-message-id.eml'));
     $client->deliver('INBOX', $answer);
-    app(Goldnead\StatamicInbox\Fetching\MailboxFetcher::class)->fetch($this->mailbox->fresh());
+    app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
 
     expect(Conversation::sole()->status)->toBe('open');
 });

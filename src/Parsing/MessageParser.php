@@ -53,7 +53,62 @@ class MessageParser
             html: $html,
             sentAt: $sentAt,
             attachments: $this->attachments($message),
+            bcc: $this->addresses($message, 'Bcc'),
+            filterHeaders: $this->filterHeaders($message),
         );
+    }
+
+    /**
+     * The headers the filter decides on, from a header block alone (what
+     * `BODY.PEEK[HEADER]` returns) or a whole message.
+     *
+     * @return array<string, mixed>
+     */
+    public function headersOnly(string $raw): array
+    {
+        return $this->filterHeaders(Message::from($raw, false));
+    }
+
+    /**
+     * Small on purpose: names, not values, except where the value decides.
+     * Stored with every message so a changed rule can be applied again
+     * without asking the server.
+     *
+     * @return array<string, mixed>
+     */
+    protected function filterHeaders(IMessage $message): array
+    {
+        $names = [];
+
+        foreach ($message->getAllHeaders() as $header) {
+            $names[strtolower($header->getName())] = true;
+        }
+
+        $value = fn (string $name) => ($v = $message->getHeaderValue($name)) === null ? null : strtolower(trim((string) $v));
+
+        // Return-Path: <> reads as an empty value; keep "<>" so it is
+        // distinguishable from a missing header.
+        $returnPath = null;
+        foreach ($message->getRawHeaders() as [$name, $raw]) {
+            if (strtolower((string) $name) === 'return-path') {
+                $returnPath = trim((string) $raw);
+                break;
+            }
+        }
+
+        return [
+            'header_names' => array_keys($names),
+            'return_path' => $returnPath,
+            'precedence' => $value('Precedence'),
+            'auto_submitted' => $value('Auto-Submitted'),
+            'from' => strtolower((string) ($this->addresses($message, 'From')[0]['email'] ?? '')),
+            'recipients' => [
+                'to' => array_column($this->addresses($message, 'To'), 'email'),
+                'cc' => array_column($this->addresses($message, 'Cc'), 'email'),
+                'bcc' => array_column($this->addresses($message, 'Bcc'), 'email'),
+            ],
+            'undisclosed' => str_contains(strtolower((string) $message->getHeaderValue('To')), 'undisclosed'),
+        ];
     }
 
     protected function id(IMessage $message, string $header): ?string

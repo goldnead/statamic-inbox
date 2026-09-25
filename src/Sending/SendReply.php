@@ -69,11 +69,15 @@ class SendReply implements ShouldQueue
             try {
                 $clients->for($mailbox)->append($mailbox->sent_folder, $sent?->toString() ?? $email->toString(), ['\\Seen']);
             } catch (Throwable $e) {
-                // The mail went out; only the copy in Sent is missing.
+                // The mail went out; only the copy in Sent is missing. Kept on
+                // the message so the conversation can say so.
+                $error = Redactor::message($e, $mailbox);
+                $message->forceFill(['filed_error' => mb_substr($error, 0, 2000)])->save();
+
                 Log::warning('inbox: reply sent, but it could not be filed into Sent.', [
                     'mailbox' => $mailbox->id,
                     'message' => $message->id,
-                    'error' => Redactor::message($e, $mailbox),
+                    'error' => $error,
                 ]);
             }
         }
@@ -98,8 +102,12 @@ class SendReply implements ShouldQueue
         $headers = $email->getHeaders();
         $headers->addIdHeader('Message-ID', $message->message_id);
 
-        if ($message->in_reply_to) {
-            $headers->addIdHeader('In-Reply-To', $message->in_reply_to);
+        // The parent is the last reference, in full; `in_reply_to` itself may
+        // hold the index hash of an overlong id.
+        $parentId = $message->referenceIds() !== [] ? last($message->referenceIds()) : $message->in_reply_to;
+
+        if ($message->in_reply_to && $parentId) {
+            $headers->addIdHeader('In-Reply-To', $parentId);
         }
 
         if ($message->referenceIds() !== []) {

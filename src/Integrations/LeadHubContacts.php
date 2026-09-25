@@ -4,6 +4,7 @@ namespace Goldnead\StatamicInbox\Integrations;
 
 use Goldnead\StatamicInbox\Events\InboxMessageReceived;
 use Goldnead\StatamicInbox\Events\InboxMessageSent;
+use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Message;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -55,6 +56,60 @@ class LeadHubContacts
     public function findById(int $id): ?array
     {
         return $this->available() ? (self::FACADE)::find($id) : null;
+    }
+
+    /**
+     * Creates the contact, which only ever happens on a user's click
+     * ("Kontakt anlegen"); the fetch never calls this.
+     *
+     * @return array<string, mixed>
+     */
+    public function create(string $email, ?string $name = null): array
+    {
+        $name = trim((string) $name);
+        $parts = $name === '' ? [] : preg_split('/\s+/u', $name, 2);
+
+        return (self::FACADE)::create(array_filter([
+            'email' => $email,
+            'first_name' => $parts[0] ?? null,
+            'last_name' => $parts[1] ?? null,
+            'source' => 'inbox',
+        ]));
+    }
+
+    /**
+     * The "E-Mails" panel on the LeadHub contact screen: the latest
+     * conversations with this address, each linking into the inbox.
+     */
+    public function registerPanel(): void
+    {
+        if (! $this->available()) {
+            return;
+        }
+
+        (self::FACADE)::registerContactPanel('inbox', function (mixed $contact): ?array {
+            $email = is_array($contact) ? ($contact['email'] ?? null) : ($contact->email ?? null);
+
+            if (! is_string($email) || $email === '') {
+                return null;
+            }
+
+            $conversations = Conversation::query()
+                ->where('counterpart_email', strtolower($email))
+                ->orderByDesc('last_message_at')
+                ->limit(5)
+                ->get();
+
+            return [
+                'heading' => __('E-Mails'),
+                'empty' => __('No conversations with this address yet.'),
+                'rows' => $conversations->map(fn (Conversation $conversation) => [
+                    'label' => $conversation->subject !== '' ? $conversation->subject : __('(no subject)'),
+                    'url' => cp_route('inbox.conversations.show', $conversation->id),
+                    'meta' => $conversation->last_message_at?->toDateString(),
+                ])->all(),
+            ];
+        });
     }
 
     /**

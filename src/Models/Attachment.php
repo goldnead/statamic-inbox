@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $message_id
  * @property string $filename
  * @property string $mime
+ * @property string|null $content_id
  * @property int $size
  * @property string $path
  */

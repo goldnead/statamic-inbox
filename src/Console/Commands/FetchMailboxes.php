@@ -46,7 +46,8 @@ class FetchMailboxes extends Command
             } catch (Throwable $e) {
                 // The fetcher masks the password before its exception leaves it.
                 $this->error("Mailbox {$mailbox->id}: {$e->getMessage()}");
-                Log::warning('inbox: fetching a mailbox failed.', [
+                // Error, not warning: the whole mailbox is down, nothing arrives.
+                Log::error('inbox: fetching a mailbox failed.', [
                     'mailbox' => $mailbox->id,
                     'error' => $e->getMessage(),
                 ]);

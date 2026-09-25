@@ -112,7 +112,7 @@ class MessageParser
         return $date ? CarbonImmutable::instance($date)->utc() : null;
     }
 
-    /** @return list<array{filename: string, mime: string, content: string}> */
+    /** @return list<array{filename: string, mime: string, content_id: string|null, content: string}> */
     protected function attachments(IMessage $message): array
     {
         $attachments = [];
@@ -124,9 +124,12 @@ class MessageParser
                 continue;
             }
 
+            $contentId = trim((string) $part->getContentId(), " \t<>");
+
             $attachments[] = [
                 'filename' => $this->safeFilename($part->getFilename() ?: 'attachment-'.($index + 1)),
                 'mime' => strtolower($part->getContentType('application/octet-stream')),
+                'content_id' => $contentId === '' ? null : $contentId,
                 'content' => $content,
             ];
         }

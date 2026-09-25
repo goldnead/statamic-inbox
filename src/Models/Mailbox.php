@@ -32,6 +32,10 @@ use Illuminate\Support\Carbon;
  * @property int $last_uid_sent
  * @property Carbon|null $last_fetched_at
  * @property string|null $last_error
+ * @property string|null $last_error_scope
+ * @property array<string, string>|null $folder_errors
+ * @property int|null $uidvalidity_inbox
+ * @property int|null $uidvalidity_sent
  * @property Carbon|null $import_since
  * @property bool $active
  */
@@ -65,6 +69,9 @@ class Mailbox extends Model
             'append_sent' => 'boolean',
             'last_uid_inbox' => 'integer',
             'last_uid_sent' => 'integer',
+            'uidvalidity_inbox' => 'integer',
+            'uidvalidity_sent' => 'integer',
+            'folder_errors' => 'array',
             'last_fetched_at' => 'datetime',
             'import_since' => 'date',
             'active' => 'boolean',
@@ -99,6 +106,15 @@ class Mailbox extends Model
         }
 
         return false;
+    }
+
+    /**
+     * Whether the whole mailbox is down (login, connection, every folder).
+     * A failing Sent folder or one bad message is not that.
+     */
+    public function isBroken(): bool
+    {
+        return $this->last_error !== null && $this->last_error_scope === 'mailbox';
     }
 
     /** The part after the @, used for our own Message-IDs. */

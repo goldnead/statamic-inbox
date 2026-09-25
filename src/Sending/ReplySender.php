@@ -9,9 +9,11 @@ use Goldnead\StatamicInbox\Models\Attachment;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Parsing\QuoteStripper;
+use Goldnead\StatamicInbox\Support\MessageIds;
 use Goldnead\StatamicInbox\Support\Subject;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -43,7 +45,8 @@ class ReplySender
 
             $this->suppression->assertMayReply($recipient);
 
-            $message = $this->store($conversation, $recipient, $text, $attachments);
+            // One unit: an attachment the disk refuses leaves no reply behind.
+            $message = DB::transaction(fn () => $this->store($conversation, $recipient, $text, $attachments));
 
             SendReply::dispatch($message->id)->onQueue((string) config('inbox.queue', 'default'));
 
@@ -62,8 +65,9 @@ class ReplySender
         $parent = $history->where('direction', Message::IN)->last() ?? $history->last();
 
         $references = $parent === null ? [] : array_values(array_unique(array_filter([
-            ...($parent->referenceIds() ?: array_filter([$parent->in_reply_to])),
-            $parent->message_id,
+            // Stored hashed when too long for the index; never put a hash on the wire.
+            ...($parent->referenceIds() ?: array_filter([$parent->in_reply_to], fn ($id) => ! str_starts_with((string) $id, 'sha256:'))),
+            $parent->message_id_full ?? $parent->message_id,
         ])));
 
         $text = str_replace(["\r\n", "\r"], "\n", trim($text));
@@ -80,7 +84,7 @@ class ReplySender
             'from_name' => $mailbox->name,
             'to' => [['email' => $recipient, 'name' => null]],
             'cc' => [],
-            'subject' => Subject::reply($conversation->subject !== '' ? $conversation->subject : (string) $parent?->subject),
+            'subject' => MessageIds::fit(Subject::reply($conversation->subject !== '' ? $conversation->subject : (string) $parent?->subject)),
             'text' => $this->withQuote($text, $parent),
             'body_stripped' => $text,
             'sent_at' => $now,
@@ -131,7 +135,9 @@ class ReplySender
             $name = basename(str_replace('\\', '/', $file->getClientOriginalName())) ?: 'attachment';
             $path = $base.'/'.($index + 1).'-'.$name;
 
-            Storage::disk($disk)->put($path, (string) file_get_contents($file->getRealPath()));
+            if (! Storage::disk($disk)->put($path, (string) file_get_contents($file->getRealPath()))) {
+                throw new \RuntimeException("Could not store attachment {$name} on the inbox disk.");
+            }
 
             Attachment::create([
                 'message_id' => $message->id,

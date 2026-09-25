@@ -28,6 +28,9 @@ Route::prefix('inbox')->name('inbox.')->group(function () {
     Route::post('conversations/{inboxConversation}/template', [ConversationsController::class, 'template'])
         ->whereNumber('inboxConversation')->middleware('can:reply inbox')->name('conversations.template');
 
+    Route::post('conversations/{inboxConversation}/contact', [ConversationsController::class, 'createContact'])
+        ->whereNumber('inboxConversation')->middleware('can:reply inbox')->name('conversations.contact');
+
     Route::get('attachments/{inboxAttachment}', [AttachmentsController::class, 'show'])
         ->whereNumber('inboxAttachment')->middleware('can:view inbox')->name('attachments.show');
 

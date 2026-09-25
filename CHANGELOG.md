@@ -18,3 +18,13 @@
   producer and an automations trigger; all optional and detected at runtime.
 - Host guard against private, loopback and link-local IMAP/SMTP hosts.
 - CP JSON endpoints and Inertia pages (`inbox::…`); the Vue screens follow.
+- Hardening after review: a message that cannot be stored no longer freezes a mailbox (ledger
+  `inbox_fetch_failures`, three attempts, then given up visibly); overlong fields are cut, overlong
+  Message-IDs indexed by hash; errors per folder (`folder_errors`) apart from a broken mailbox;
+  UIDVALIDITY per folder; future Date headers clamped; `srcset` and `<source>` blocked as remote
+  images; `cid:` images mapped to the attachment route; APPEND failures kept as `filed_error`;
+  password required again when host, port or login change (also for the connection test);
+  Gmail and Sent folder re-detected on a host change; contact links checked against LeadHub.
+- Nav item "Postfach" with the unread count, "E-Mails" panel on the LeadHub contact, and
+  "Kontakt anlegen" from a conversation. The unused `default_mailbox` setting is gone.
+- AI drafts default to `claude-sonnet-5`.

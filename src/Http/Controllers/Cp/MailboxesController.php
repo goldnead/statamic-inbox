@@ -14,6 +14,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
@@ -78,25 +79,81 @@ class MailboxesController extends Controller
         $mailbox = Mailbox::query()->findOrFail($inboxMailbox);
         $data = $this->validated($request, $mailbox);
 
+        $this->requirePasswordOnChange($mailbox, $data);
+
         if (($data['password'] ?? '') === '') {
             unset($data['password']);
         }
 
-        $mailbox->fill($data)->save();
+        $hostsChanged = $this->changed($mailbox, $data, ['imap_host', 'smtp_host']);
+
+        $mailbox->fill($data);
+
+        if ($hostsChanged) {
+            // Another server: its UIDs, its Sent folder and its Gmail-ness are
+            // all different. What the form states explicitly is kept.
+            $mailbox->forceFill([
+                'last_uid_inbox' => 0, 'last_uid_sent' => 0,
+                'uidvalidity_inbox' => null, 'uidvalidity_sent' => null,
+            ]);
+
+            if (! array_key_exists('append_sent', $data)) {
+                $mailbox->append_sent = ! Mailbox::isGmailHost($mailbox->imap_host) && ! Mailbox::isGmailHost($mailbox->smtp_host);
+            }
+
+            if (! array_key_exists('sent_folder', $data)) {
+                $mailbox->sent_folder = null;
+            }
+        }
+
+        $mailbox->save();
+
+        if ($hostsChanged && ! $mailbox->sent_folder) {
+            $this->detectSentFolder($mailbox, app(MailboxClientFactory::class));
+        }
 
         return response()->json(['mailbox' => $this->present($mailbox->fresh() ?? $mailbox)]);
     }
 
-    /** IMAP and SMTP separately, so the form can say which half is wrong. */
-    public function test(int $inboxMailbox, MailboxClientFactory $clients, TransportFactory $transports): JsonResponse
+    /**
+     * IMAP and SMTP separately, so the form can say which half is wrong.
+     *
+     * Tests the stored settings, or the ones the form sends before saving
+     * them. Settings that point the stored password somewhere else need the
+     * password typed again, exactly as on update.
+     */
+    public function test(Request $request, int $inboxMailbox, MailboxClientFactory $clients, TransportFactory $transports): JsonResponse
     {
         Gate::authorize('manage inbox mailboxes');
 
         $mailbox = Mailbox::query()->findOrFail($inboxMailbox);
 
-        $imap = $this->attempt($mailbox, fn () => $clients->for($mailbox)->check());
-        $smtp = $this->attempt($mailbox, function () use ($transports, $mailbox) {
-            $transport = $transports->for($mailbox);
+        $overrides = $request->validate([
+            'imap_host' => ['sometimes', 'string', 'max:255', $this->hostRule()],
+            'imap_port' => ['sometimes', 'integer', 'between:1,65535'],
+            'imap_encryption' => ['sometimes', 'in:ssl,tls,starttls,none'],
+            'username' => ['sometimes', 'string', 'max:255'],
+            'password' => ['sometimes', 'nullable', 'string'],
+            'smtp_host' => ['sometimes', 'string', 'max:255', $this->hostRule()],
+            'smtp_port' => ['sometimes', 'integer', 'between:1,65535'],
+            'smtp_encryption' => ['sometimes', 'in:ssl,tls,starttls,none'],
+        ]);
+
+        $this->requirePasswordOnChange($mailbox, $overrides);
+
+        if (($overrides['password'] ?? '') === '') {
+            unset($overrides['password']);
+        }
+
+        // Never saved: a copy carrying the form's values.
+        // Keeps the id so it is recognisably this mailbox; `exists` is false,
+        // so a stray save() would fail on the key rather than overwrite it.
+        $candidate = $mailbox->replicate()->forceFill($overrides);
+        $candidate->setAttribute($mailbox->getKeyName(), $mailbox->getKey());
+
+        $imap = $this->attempt($candidate, $mailbox, fn () => $clients->for($candidate)->check());
+        $smtp = $this->attempt($candidate, $mailbox, function () use ($transports, $candidate) {
+            $transport = $transports->for($candidate);
 
             if ($transport instanceof SmtpTransport) {
                 $transport->start();
@@ -107,15 +164,49 @@ class MailboxesController extends Controller
         return response()->json(['imap' => $imap, 'smtp' => $smtp]);
     }
 
+    /** The settings that decide where the stored password is sent. */
+    public const PASSWORD_BOUND = ['imap_host', 'smtp_host', 'username', 'imap_port', 'smtp_port'];
+
+    /**
+     * Without this, changing the host to one's own server and pressing
+     * "Test connection" would hand the stored password to that server.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function requirePasswordOnChange(Mailbox $mailbox, array $data): void
+    {
+        if (($data['password'] ?? '') === '' && $this->changed($mailbox, $data, self::PASSWORD_BOUND)) {
+            throw ValidationException::withMessages([
+                'password' => __('Enter the password again: the server, port or login changed.'),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<string>  $fields
+     */
+    protected function changed(Mailbox $mailbox, array $data, array $fields): bool
+    {
+        foreach ($fields as $field) {
+            if (array_key_exists($field, $data) && strtolower(trim((string) $data[$field])) !== strtolower(trim((string) $mailbox->{$field}))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return array{ok: bool, error: string|null} */
-    protected function attempt(Mailbox $mailbox, callable $check): array
+    protected function attempt(Mailbox $candidate, Mailbox $stored, callable $check): array
     {
         try {
             $check();
 
             return ['ok' => true, 'error' => null];
         } catch (Throwable $e) {
-            $error = Redactor::message($e, $mailbox);
+            $error = Redactor::mask(Redactor::message($e, $candidate), $stored);
+            $mailbox = $stored;
             Log::info('inbox: connection test failed.', ['mailbox' => $mailbox->id, 'error' => $error]);
 
             return ['ok' => false, 'error' => $error];
@@ -140,13 +231,7 @@ class MailboxesController extends Controller
     /** @return array<string, mixed> */
     protected function validated(Request $request, ?Mailbox $mailbox): array
     {
-        $host = function (string $attribute, mixed $value, \Closure $fail): void {
-            try {
-                app(HostGuard::class)->check((string) $value);
-            } catch (UnsafeHostException $e) {
-                $fail($e->getMessage());
-            }
-        };
+        $host = $this->hostRule();
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -173,6 +258,17 @@ class MailboxesController extends Controller
         }
 
         return $data;
+    }
+
+    protected function hostRule(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail): void {
+            try {
+                app(HostGuard::class)->check((string) $value);
+            } catch (UnsafeHostException $e) {
+                $fail($e->getMessage());
+            }
+        };
     }
 
     /** @return array<string, mixed> */

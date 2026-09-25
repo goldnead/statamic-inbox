@@ -7,6 +7,7 @@ use Goldnead\StatamicInbox\Ai\DraftUnavailable;
 use Goldnead\StatamicInbox\Exceptions\ReplyRefused;
 use Goldnead\StatamicInbox\Integrations\EmailTemplateFiller;
 use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
+use Goldnead\StatamicInbox\Models\Attachment;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
@@ -43,7 +44,16 @@ class ConversationsController extends Controller
         $tab = in_array($request->query('tab'), self::TABS, true) ? $request->query('tab') : 'open';
         $now = Carbon::now();
 
+        // The excerpt as a subquery: one query for the page, not one per row.
         $query = Conversation::query()
+            ->select('inbox_conversations.*')
+            ->addSelect(['excerpt' => Message::query()
+                ->select('body_stripped')
+                ->whereColumn('inbox_messages.conversation_id', 'inbox_conversations.id')
+                ->orderByDesc('sent_at')
+                ->orderByDesc('id')
+                ->limit(1),
+            ])
             ->with('mailbox:id,name,email')
             ->when($request->query('mailbox'), fn ($q, $id) => $q->where('mailbox_id', (int) $id))
             ->when($request->query('q'), function ($q, $search) {
@@ -69,10 +79,7 @@ class ConversationsController extends Controller
                 'unread' => $c->unread,
                 'snoozed_until' => $c->snoozed_until?->toIso8601String(),
                 'last_message_at' => $c->last_message_at?->toIso8601String(),
-                'excerpt' => Str::limit(
-                    (string) Message::query()->where('conversation_id', $c->id)->latest('sent_at')->value('body_stripped'),
-                    140
-                ),
+                'excerpt' => Str::limit((string) $c->getAttribute('excerpt'), 140),
                 'mailbox' => $c->mailbox?->only(['id', 'name', 'email']),
             ]),
             'mailboxes' => Mailbox::query()->orderBy('name')->get(['id', 'name', 'email']),
@@ -95,17 +102,26 @@ class ConversationsController extends Controller
                 'id', 'subject', 'counterpart_email', 'contact_id', 'status', 'snoozed_until', 'last_message_at',
             ]),
             'mailbox' => $conversation->mailbox?->only(['id', 'name', 'email']),
-            'messages' => $conversation->messages()->with('attachments')->get()->map(fn (Message $m) => [
-                ...$m->only([
-                    'id', 'direction', 'from_email', 'from_name', 'to', 'cc', 'subject', 'text',
-                    'html_sanitized', 'body_stripped', 'has_remote_images', 'send_error',
-                ]),
-                'sent_at' => $m->sent_at?->toIso8601String(),
-                'attachments' => $m->attachments->map(fn ($a) => [
-                    ...$a->only(['id', 'filename', 'mime', 'size']),
+            'messages' => $conversation->messages()->with('attachments')->get()->map(function (Message $m) {
+                $attachments = $m->attachments->map(fn (Attachment $a) => [
+                    ...$a->only(['id', 'filename', 'mime', 'size', 'content_id']),
                     'url' => cp_route('inbox.attachments.show', $a->id),
-                ])->all(),
-            ])->all(),
+                ]);
+
+                return [
+                    ...$m->only([
+                        'id', 'direction', 'from_email', 'from_name', 'to', 'cc', 'subject', 'text',
+                        'html_sanitized', 'body_stripped', 'has_remote_images', 'send_error', 'filed_error',
+                    ]),
+                    'sent_at' => $m->sent_at?->toIso8601String(),
+                    'attachments' => $attachments->all(),
+                    // data-inbox-cid="…" in html_sanitized → this URL, served
+                    // through the permission-checked attachment route.
+                    'inline_images' => $attachments->filter(fn ($a) => $a['content_id'] !== null)
+                        ->mapWithKeys(fn ($a) => [$a['content_id'] => $a['url']])
+                        ->all(),
+                ];
+            })->all(),
             'contact' => $conversation->contact_id ? $contacts->findById($conversation->contact_id) : null,
             'leadhub' => $contacts->available(),
             'templates' => app(EmailTemplateFiller::class)->available(),
@@ -114,7 +130,7 @@ class ConversationsController extends Controller
     }
 
     /** Status, snooze and contact link. */
-    public function update(Request $request, int $inboxConversation): JsonResponse
+    public function update(Request $request, int $inboxConversation, LeadHubContacts $contacts): JsonResponse
     {
         Gate::authorize('reply inbox');
 
@@ -124,12 +140,45 @@ class ConversationsController extends Controller
             'status' => ['sometimes', 'in:'.implode(',', Conversation::STATUSES)],
             'snoozed_until' => ['sometimes', 'nullable', 'date'],
             'unread' => ['sometimes', 'boolean'],
-            'contact_id' => ['sometimes', 'nullable', 'integer'],
+            'contact_id' => ['sometimes', 'nullable', 'integer', function (string $attribute, mixed $value, \Closure $fail) use ($contacts) {
+                // Only a contact LeadHub knows, in this brand; without LeadHub, none.
+                if ($value !== null && $contacts->findById((int) $value) === null) {
+                    $fail(__('There is no such contact.'));
+                }
+            }],
         ]);
 
         $conversation->fill($data)->save();
 
         return response()->json(['conversation' => $conversation->fresh()]);
+    }
+
+    /**
+     * "Kontakt anlegen": creates the LeadHub contact for the other side, on a
+     * click and never on its own, then links the conversation to it.
+     */
+    public function createContact(int $inboxConversation, LeadHubContacts $contacts): JsonResponse
+    {
+        Gate::authorize('reply inbox');
+
+        $conversation = Conversation::query()->findOrFail($inboxConversation);
+
+        if (! $contacts->available()) {
+            return response()->json(['message' => __('LeadHub is not installed.')], 422);
+        }
+
+        $name = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', Message::IN)
+            ->whereNotNull('from_name')
+            ->latest('sent_at')
+            ->value('from_name');
+
+        $contact = $contacts->create($conversation->counterpart_email, $name);
+
+        $conversation->forceFill(['contact_id' => (int) $contact['id']])->save();
+
+        return response()->json(['contact' => $contact, 'conversation' => $conversation->fresh()], 201);
     }
 
     public function reply(Request $request, int $inboxConversation, ReplySender $sender): JsonResponse
@@ -153,7 +202,7 @@ class ConversationsController extends Controller
             return response()->json(['message' => $e->getMessage()], 502);
         }
 
-        return response()->json(['message' => $message->only(['id', 'message_id', 'direction', 'send_error'])], 201);
+        return response()->json(['message' => $message->only(['id', 'message_id', 'direction', 'send_error', 'filed_error'])], 201);
     }
 
     public function draft(Request $request, int $inboxConversation, DraftSuggester $suggester): JsonResponse

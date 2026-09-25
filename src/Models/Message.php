@@ -35,6 +35,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $imap_uid
  * @property bool $has_remote_images
  * @property string|null $send_error
+ * @property string|null $filed_error
+ * @property string|null $message_id_full
  * @property-read Conversation $conversation
  * @property-read Mailbox $mailbox
  */

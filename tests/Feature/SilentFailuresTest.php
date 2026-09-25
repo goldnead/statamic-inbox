@@ -6,8 +6,10 @@
  * a whole mailbox that could not be fetched.
  */
 
+use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Models\Attachment;
 use Goldnead\StatamicInbox\Models\Conversation;
+use Goldnead\StatamicInbox\Models\FetchFailure;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Sending\ReplySender;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -49,7 +51,7 @@ it('does not leave an attachment row behind when the disk refuses the file', fun
     $client->deliver('INBOX', mailFixture('01-new-thread.eml'));
 
     try {
-        app(Goldnead\StatamicInbox\Fetching\MailboxFetcher::class)->fetch($this->mailbox->fresh());
+        app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
     } catch (Throwable) {
     }
 
@@ -58,7 +60,7 @@ it('does not leave an attachment row behind when the disk refuses the file', fun
     expect(Attachment::count())->toBe(0)
         ->and(Message::where('message_id', 'CAanna009+inline@mail.gmail.com')->exists())->toBeFalse()
         ->and(Message::where('message_id', 'CAanna001+x7Qk2@mail.gmail.com')->exists())->toBeTrue()
-        ->and(Goldnead\StatamicInbox\Models\FetchFailure::sole()->error)->toContain('Could not store attachment');
+        ->and(FetchFailure::sole()->error)->toContain('Could not store attachment');
 });
 
 it('logs a whole-mailbox failure at error level', function () {

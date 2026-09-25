@@ -39,6 +39,12 @@ interface MailboxClient
      */
     public function detectSentFolder(): ?string;
 
+    /**
+     * The folder's UIDVALIDITY. When it changes, the server has renumbered
+     * the folder and every stored UID cursor for it is meaningless.
+     */
+    public function uidValidity(string $folder): ?int;
+
     /** Log in and list folders; throws with the server's reason when that fails. */
     public function check(): void;
 }

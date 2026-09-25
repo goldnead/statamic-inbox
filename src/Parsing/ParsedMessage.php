@@ -13,7 +13,7 @@ final class ParsedMessage
      * @param  list<string>  $references
      * @param  list<array{email: string, name: string|null}>  $to
      * @param  list<array{email: string, name: string|null}>  $cc
-     * @param  list<array{filename: string, mime: string, content: string}>  $attachments
+     * @param  list<array{filename: string, mime: string, content_id: string|null, content: string}>  $attachments
      */
     public function __construct(
         public readonly string $messageId,

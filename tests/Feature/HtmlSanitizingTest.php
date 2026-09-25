@@ -72,7 +72,8 @@ it('rewrites cid images so the CP can show them through the attachment route', f
     $inline = $message->attachments()->where('content_id', 'foto@anna.example')->sole();
 
     expect($message->html_sanitized)
-        ->toContain('data-inbox-cid="foto@anna.example"')
+        // The sanitizer may write the @ as &#64;; the browser reads both the same.
+        ->toMatch('/data-inbox-cid="foto(@|&#64;)anna\.example"/')
         ->not->toContain('src="cid:')
         ->and($message->has_remote_images)->toBeFalse()
         ->and($inline->mime)->toBe('image/png')

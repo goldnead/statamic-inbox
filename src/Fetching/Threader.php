@@ -7,6 +7,7 @@ use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Parsing\ParsedMessage;
+use Goldnead\StatamicInbox\Support\MessageIds;
 use Goldnead\StatamicInbox\Support\Subject;
 
 /**
@@ -32,7 +33,7 @@ class Threader
         foreach ($parsed->ancestors() as $id) {
             $message = Message::query()
                 ->where('mailbox_id', $mailbox->id)
-                ->where('message_id', $id)
+                ->where('message_id', MessageIds::key($id))
                 ->first();
 
             if ($message !== null) {
@@ -48,7 +49,7 @@ class Threader
     {
         $child = Message::query()
             ->where('mailbox_id', $mailbox->id)
-            ->where('in_reply_to', $parsed->messageId)
+            ->where('in_reply_to', MessageIds::key($parsed->messageId))
             ->first();
 
         return $child?->conversation;

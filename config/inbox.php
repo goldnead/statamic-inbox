@@ -68,15 +68,13 @@ return [
     'ai' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
         'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
-        'model' => env('INBOX_AI_MODEL', 'claude-opus-5'),
+        // Sonnet: drafts are short, and a click on "Entwurf vorschlagen"
+        // should not cost Opus prices.
+        'model' => env('INBOX_AI_MODEL', 'claude-sonnet-5'),
         'max_tokens' => 1024,
         'timeout' => 60,
         'style_prompt' => null,
     ],
-
-    // The mailbox the reply form preselects for this brand; null means the
-    // first active one.
-    'default_mailbox' => null,
 
     'queue' => env('INBOX_QUEUE', 'default'),
 

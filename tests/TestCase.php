@@ -38,6 +38,11 @@ abstract class TestCase extends AddonTestCase
         // Statamic runs bootAddon() inside a booted callback Testbench never
         // fires; run it the way that callback would.
         $this->app->getProvider(ServiceProvider::class)?->bootAddon();
+
+        // Statamic's booted callback already ran bootAddon() before the Nav
+        // mock above existed, so the nav callback went to the real builder.
+        // Register it once more against the mock, where a test can reach it.
+        $this->app->getProvider(ServiceProvider::class)?->registerNavigation();
     }
 
     protected function tearDown(): void

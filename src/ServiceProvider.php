@@ -12,10 +12,13 @@ use Goldnead\StatamicInbox\Imap\ImapEngineClientFactory;
 use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Integrations\SuiteBridges;
 use Goldnead\StatamicInbox\Mail\SmtpTransportFactory;
+use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Support\HostGuard;
 use Goldnead\StatamicInbox\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
+use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
 
@@ -91,6 +94,38 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->registerPermissions();
         $this->registerListeners();
+        $this->registerNavigation();
+    }
+
+    /**
+     * "Postfach" under Tools, with the unread count. Statamic's nav has no
+     * badge, so the count is in the label and, for the CP script, in
+     * `data-inbox-unread`. Built per request, when the nav is.
+     */
+    public function registerNavigation(): void
+    {
+        Nav::extend(function ($nav): void {
+            $unread = $this->unreadCount();
+
+            $nav->create($unread > 0 ? __('Postfach').' ('.$unread.')' : __('Postfach'))
+                ->section('Tools')
+                ->route('inbox.index')
+                ->icon('mail-inbox')
+                ->can('view inbox')
+                ->attributes(['data-inbox-unread' => $unread]);
+        });
+    }
+
+    /** Never throws: a nav that 500s takes the whole CP with it. */
+    protected function unreadCount(): int
+    {
+        try {
+            return Schema::hasTable('inbox_conversations')
+                ? Conversation::query()->where('unread', true)->count()
+                : 0;
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -116,9 +151,13 @@ class ServiceProvider extends AddonServiceProvider
      */
     protected function registerListeners(): void
     {
-        if (! $this->app->make(LeadHubContacts::class)->available()) {
+        $contacts = $this->app->make(LeadHubContacts::class);
+
+        if (! $contacts->available()) {
             return;
         }
+
+        $contacts->registerPanel();
 
         Event::listen(InboxMessageReceived::class, [LeadHubContacts::class, 'onReceived']);
         Event::listen(InboxMessageSent::class, [LeadHubContacts::class, 'onSent']);

@@ -78,6 +78,14 @@ class ImapEngineClient implements MailboxClient
         $this->folder($folder)->messages()->append($raw, $flags);
     }
 
+    public function uidValidity(string $folder): ?int
+    {
+        $status = $this->folder($folder)->status();
+        $value = $status['UIDVALIDITY'] ?? null;
+
+        return $value === null ? null : (int) $value;
+    }
+
     public function detectSentFolder(): ?string
     {
         $folders = $this->mailbox()->folders()->get();

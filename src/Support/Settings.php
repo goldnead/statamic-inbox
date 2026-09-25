@@ -43,14 +43,6 @@ class Settings implements ProvidesSettings
                 'description' => __('How the reply form is prepared. Nothing here sends a mail; every reply still needs a click.'),
                 'fields' => [
                     [
-                        'key' => 'default_mailbox',
-                        'type' => 'integer',
-                        'label' => __('Default mailbox'),
-                        'description' => __('The mailbox a new reply starts from. Empty uses the first active mailbox of this brand.'),
-                        'nullable' => true,
-                        'min' => 1,
-                    ],
-                    [
                         'key' => 'ai.style_prompt',
                         'type' => 'text',
                         'label' => __('Style for AI drafts'),

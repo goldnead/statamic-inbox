@@ -168,6 +168,9 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # The page logic: reply modes, the password rule, the mail frame.
+      - run: npm test
+
       - run: npm run build
 
       - name: Fail if the committed bundle is stale

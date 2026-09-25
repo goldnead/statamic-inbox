@@ -11,6 +11,7 @@ use Goldnead\StatamicInbox\Support\UnsafeHostException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -38,12 +39,34 @@ class MailboxesController extends Controller
             return Inertia::render('inbox::Mailboxes/Index', [
                 'setupRequired' => __('The inbox tables are missing. Run php artisan migrate.'),
                 'mailboxes' => [],
+                'createUrl' => cp_route('inbox.mailboxes.create'),
             ]);
         }
 
         return Inertia::render('inbox::Mailboxes/Index', [
             'mailboxes' => Mailbox::query()->orderBy('name')->get()->map(fn (Mailbox $m) => $this->present($m))->all(),
             'presets' => config('inbox.presets', []),
+            'createUrl' => cp_route('inbox.mailboxes.create'),
+            'inboxUrl' => cp_route('inbox.index'),
+        ]);
+    }
+
+    /** The same form as edit, empty; the password is required here. */
+    public function create(): Response
+    {
+        Gate::authorize('manage inbox mailboxes');
+
+        $mailbox = new Mailbox;
+
+        return Inertia::render('inbox::Mailboxes/Edit', [
+            'mailbox' => [
+                ...collect($mailbox->getAttributes())->except(['password'])->all(),
+                'append_sent' => true,
+                'import_since' => Carbon::now()->subDays((int) config('inbox.fetch.import_days', 90))->toDateString(),
+                'has_password' => false,
+            ],
+            'isNew' => true,
+            ...$this->formProps(null),
         ]);
     }
 
@@ -51,10 +74,51 @@ class MailboxesController extends Controller
     {
         Gate::authorize('manage inbox mailboxes');
 
+        $mailbox = Mailbox::query()->findOrFail($inboxMailbox);
+
         return Inertia::render('inbox::Mailboxes/Edit', [
-            'mailbox' => $this->present(Mailbox::query()->findOrFail($inboxMailbox)),
-            'presets' => config('inbox.presets', []),
+            'mailbox' => $this->present($mailbox),
+            'isNew' => false,
+            ...$this->formProps($mailbox),
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    protected function formProps(?Mailbox $mailbox): array
+    {
+        return [
+            'presets' => config('inbox.presets', []),
+            'importDays' => (int) config('inbox.fetch.import_days', 90),
+            'indexUrl' => cp_route('inbox.mailboxes.index'),
+            'storeUrl' => cp_route('inbox.mailboxes.store'),
+            'updateUrl' => $mailbox ? cp_route('inbox.mailboxes.update', $mailbox->id) : null,
+            'testUrl' => $mailbox ? cp_route('inbox.mailboxes.test', $mailbox->id) : cp_route('inbox.mailboxes.test-new'),
+        ];
+    }
+
+    /**
+     * "Verbindung testen" before the first save: every value comes from the
+     * form, the password included, and nothing is stored.
+     */
+    public function testNew(Request $request, MailboxClientFactory $clients, TransportFactory $transports): JsonResponse
+    {
+        Gate::authorize('manage inbox mailboxes');
+
+        $values = $request->validate([
+            'imap_host' => ['required', 'string', 'max:255', $this->hostRule()],
+            'imap_port' => ['required', 'integer', 'between:1,65535'],
+            'imap_encryption' => ['required', 'in:ssl,tls,starttls,none'],
+            'username' => ['required', 'string', 'max:255'],
+            'password' => ['required', 'string'],
+            'smtp_host' => ['required', 'string', 'max:255', $this->hostRule()],
+            'smtp_port' => ['required', 'integer', 'between:1,65535'],
+            'smtp_encryption' => ['required', 'in:ssl,tls,starttls,none'],
+            'email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $candidate = (new Mailbox)->forceFill($values);
+
+        return response()->json($this->check($candidate, $candidate, $clients, $transports));
     }
 
     public function store(Request $request, MailboxClientFactory $clients): JsonResponse
@@ -151,8 +215,14 @@ class MailboxesController extends Controller
         $candidate = $mailbox->replicate()->forceFill($overrides);
         $candidate->setAttribute($mailbox->getKeyName(), $mailbox->getKey());
 
-        $imap = $this->attempt($candidate, $mailbox, fn () => $clients->for($candidate)->check());
-        $smtp = $this->attempt($candidate, $mailbox, function () use ($transports, $candidate) {
+        return response()->json($this->check($candidate, $mailbox, $clients, $transports));
+    }
+
+    /** @return array{imap: array{ok: bool, error: string|null}, smtp: array{ok: bool, error: string|null}} */
+    protected function check(Mailbox $candidate, Mailbox $stored, MailboxClientFactory $clients, TransportFactory $transports): array
+    {
+        $imap = $this->attempt($candidate, $stored, fn () => $clients->for($candidate)->check());
+        $smtp = $this->attempt($candidate, $stored, function () use ($transports, $candidate) {
             $transport = $transports->for($candidate);
 
             if ($transport instanceof SmtpTransport) {
@@ -161,7 +231,7 @@ class MailboxesController extends Controller
             }
         });
 
-        return response()->json(['imap' => $imap, 'smtp' => $smtp]);
+        return ['imap' => $imap, 'smtp' => $smtp];
     }
 
     /** The settings that decide where the stored password is sent. */
@@ -276,7 +346,9 @@ class MailboxesController extends Controller
     {
         return [
             ...collect($mailbox->toArray())->except(['password'])->all(),
+            'import_since' => $mailbox->import_since?->toDateString(),
             'has_password' => (string) $mailbox->getRawOriginal('password') !== '',
+            'edit_url' => $mailbox->exists ? cp_route('inbox.mailboxes.edit', $mailbox->id) : null,
         ];
     }
 }

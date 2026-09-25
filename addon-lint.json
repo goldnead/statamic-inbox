@@ -1,0 +1,26 @@
+{
+    "severity": {
+        "ui.inertia-navigation": "minor"
+    },
+
+    "_rationale": {
+        "ui.inertia-navigation": [
+            "Downgraded, not disabled, as in statamic-automations: every hit stays visible in each report.",
+
+            "The rule is right that axios plus a manual page reload skips Inertia's progress bar, flash",
+            "toasts, dirty guard and back button. The inbox does not do that: page changes go through",
+            "router.visit/router.reload, the progress bar is started by hand around each call, the dirty",
+            "state is registered with Statamic.$dirty, and toasts go through Statamic.$toast.",
+
+            "What the hits are: calls to the addon's JSON endpoints (routes/cp.php), which answer with a",
+            "body the page needs in place. The draft endpoint returns the suggested text, the template",
+            "endpoint the filled text, the connection test IMAP and SMTP results, the reply endpoint the",
+            "stored message or why it failed (502 keeps the text in the form), the mailbox store the new",
+            "edit URL, the conversation update the new state. router.post() expects an Inertia page",
+            "response and cannot hand any of that back without a reload that would lose the typed reply.",
+
+            "Core ships the same shape: resources/js/pages/users/Passkeys.vue is",
+            "axios.delete(url).then(() => router.reload())."
+        ]
+    }
+}

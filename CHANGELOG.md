@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Control Panel: the inbox as core's Listing (tabs Offen, Wartet, Erledigt, Geschlummert, search,
+  mailbox filter, unread dot, failed sends), fetch problems per mailbox above it, an empty state
+  that leads to connecting a mailbox.
+- Conversation screen: thread with older messages and quoted text folded, HTML in a sandboxed
+  frame without scripts, remote images only on click, inline images and attachments through the
+  permission-checked route, LeadHub contact card or "Kontakt anlegen", status and snooze, reply
+  form with template and AI draft that only fill the text.
+- Mailbox screens: list, create and edit with provider presets, write-only password that is asked
+  for again when server, port or login change, connection test before or after saving.
+- German translations (`lang/de.json`), `scripts/setup-playground.sh` with seed data from the
+  IMAP fake.
 - Package skeleton: service provider, per-brand settings through brand-context, permissions
   `view inbox`, `reply inbox`, `manage inbox mailboxes`.
 - Fetching over IMAP (directorytree/imapengine): INBOX and Sent, UID cursor per folder, first run

@@ -3,6 +3,9 @@
 namespace Goldnead\StatamicInbox\Integrations;
 
 use Goldnead\StatamicInbox\Models\Conversation;
+use Illuminate\Support\Facades\Log;
+use Statamic\Facades\Entry;
+use Throwable;
 
 /**
  * Fills the reply form from a goldnead/statamic-email-templates template.
@@ -19,9 +22,48 @@ class EmailTemplateFiller
 
     public function __construct(protected LeadHubContacts $contacts) {}
 
+    public const COLLECTION = 'Goldnead\\EmailTemplates\\Services\\EmailTemplateCollectionManager';
+
+    public const BRANDS = 'Goldnead\\EmailTemplates\\Support\\Brands';
+
     public function available(): bool
     {
         return class_exists(self::FACADE) && class_exists(self::MERGE);
+    }
+
+    /**
+     * The templates the reply form can pick from, as select options. Only the
+     * managed ones (entries), in the current brand, the way resolve() finds
+     * them; empty when email-templates is not installed.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public function options(): array
+    {
+        if (! $this->available()) {
+            return [];
+        }
+
+        try {
+            $handle = defined(self::COLLECTION.'::HANDLE') ? constant(self::COLLECTION.'::HANDLE') : 'et_templates';
+            $brand = class_exists(self::BRANDS) && (self::BRANDS)::active() ? (self::BRANDS)::current() : null;
+            $field = $brand === null ? null : (string) constant(self::BRANDS.'::FIELD');
+
+            return Entry::whereCollection($handle)
+                ->filter(fn ($entry) => $field === null || $entry->get($field) === $brand)
+                ->map(fn ($entry) => [
+                    'value' => (string) $entry->slug(),
+                    'label' => (string) ($entry->get('title') ?: $entry->slug()),
+                ])
+                ->unique('value')
+                ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values()
+                ->all();
+        } catch (Throwable $e) {
+            Log::warning('inbox: could not list the email templates.', ['error' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     /** @return array{subject: string, text: string}|null  null when there is no such template */
@@ -40,7 +82,8 @@ class EmailTemplateFiller
         $data = $this->variables($conversation);
         $body = $template->plainText !== null && $template->plainText !== ''
             ? $template->plainText
-            : trim(html_entity_decode(strip_tags((string) preg_replace('/<br\s*\/?>|<\/p>/i', "\n", $template->body))));
+            // A paragraph ends in a blank line, a <br> in a line break, as in a mail.
+            : trim((string) preg_replace("/\n{3,}/", "\n\n", html_entity_decode(strip_tags((string) preg_replace(['/<br\s*\/?>/i', '/<\/p>/i'], ["\n", "\n\n"], $template->body)))));
 
         return [
             'subject' => (self::MERGE)::apply($template->subject, $data, false),

@@ -48,7 +48,8 @@ it('lists conversations with a constant number of queries', function () {
     $count = function () use ($user) {
         DB::flushQueryLog();
         DB::enableQueryLog();
-        $this->actingAs($user)->get('/cp/inbox')->assertOk();
+        // The rows come from the JSON the Listing asks the same URL for.
+        $this->actingAs($user)->getJson('/cp/inbox')->assertOk();
         DB::disableQueryLog();
 
         return count(DB::getQueryLog());
@@ -70,9 +71,9 @@ it('shows the excerpt of the newest message in the list', function () {
         'Sent' => ['02-sent-reply.eml'],
     ]);
 
-    $props = $this->actingAs(inboxCpUser(['view inbox']))->get('/cp/inbox')->viewData('page')['props'];
+    $rows = $this->actingAs(inboxCpUser(['view inbox']))->getJson('/cp/inbox')->json('data');
 
-    expect($props['conversations']['data'][0]['excerpt'])->toStartWith('Dienstag passt super');
+    expect($rows[0]['excerpt'])->toStartWith('Dienstag passt super');
 });
 
 it('adds a Postfach nav item with the unread count for view inbox', function () {

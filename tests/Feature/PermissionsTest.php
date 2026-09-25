@@ -52,6 +52,12 @@ dataset('inbox routes', [
         'smtp_host' => 'smtp.migadu.com', 'smtp_port' => 587, 'smtp_encryption' => 'tls',
     ]]],
     'mailbox edit' => ['manage inbox mailboxes', fn ($t) => ['GET', '/cp/inbox/mailboxes/'.$t->mailbox->id.'/edit', []]],
+    'mailbox create form' => ['manage inbox mailboxes', fn ($t) => ['GET', '/cp/inbox/mailboxes/create', []]],
+    'connection test before saving' => ['manage inbox mailboxes', fn ($t) => ['POST', '/cp/inbox/mailboxes/test', [
+        'imap_host' => 'imap.migadu.com', 'imap_port' => 993, 'imap_encryption' => 'ssl',
+        'username' => 'chor@goldner.test', 'password' => 'another-app-pass',
+        'smtp_host' => 'smtp.migadu.com', 'smtp_port' => 587, 'smtp_encryption' => 'tls',
+    ]]],
     'mailbox update' => ['manage inbox mailboxes', fn ($t) => ['PATCH', '/cp/inbox/mailboxes/'.$t->mailbox->id, [
         'name' => 'Adrian', 'email' => 'adrian@goldner.test',
         'imap_host' => 'imap.migadu.com', 'imap_port' => 993, 'imap_encryption' => 'ssl',

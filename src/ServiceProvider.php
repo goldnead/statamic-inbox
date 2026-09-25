@@ -18,6 +18,7 @@ use Goldnead\StatamicInbox\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Translation\Translator;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -33,7 +34,7 @@ class ServiceProvider extends AddonServiceProvider
     protected $vite = [
         'hotFile' => __DIR__.'/../dist/hot',
         'publicDirectory' => 'dist',
-        'input' => ['resources/js/cp.js'],
+        'input' => ['resources/js/cp.js', 'resources/css/cp.css'],
     ];
 
     /**
@@ -87,6 +88,19 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
+        // Statamic loads an addon's group files from lang/, not its JSON
+        // dictionary; the Control Panel strings live in lang/de.json.
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+
+        // Laravel memoises a locale's merged JSON on the first lookup. In a
+        // Statamic install something has always translated before this point,
+        // so that memo lacks this file and the column labels built in PHP
+        // would stay English. Dropping it re-reads everything lazily
+        // (the same fix as in statamic-automations).
+        if ($this->app->resolved('translator') && ($translator = $this->app->make('translator')) instanceof Translator) {
+            $translator->setLoaded([]);
+        }
+
         // In boot and not later: brand-context applies the overrides in an
         // `app->booted()` callback, and a registration after that point would
         // never reach config() in this process.
@@ -107,11 +121,17 @@ class ServiceProvider extends AddonServiceProvider
         Nav::extend(function ($nav): void {
             $unread = $this->unreadCount();
 
+            // `mail-inbox-content`: core's set has no `mail-inbox`, and an
+            // unknown name renders an empty square without a warning.
             $nav->create($unread > 0 ? __('Postfach').' ('.$unread.')' : __('Postfach'))
                 ->section('Tools')
                 ->route('inbox.index')
-                ->icon('mail-inbox')
+                ->icon('mail-inbox-content')
                 ->can('view inbox')
+                // No children on purpose: an item with explicit children is
+                // only active on its exact URL, and every conversation and
+                // mailbox screen would lose its breadcrumb. The mailboxes are
+                // one button away in the listing header.
                 ->attributes(['data-inbox-unread' => $unread]);
         });
     }

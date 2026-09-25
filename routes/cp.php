@@ -36,7 +36,9 @@ Route::prefix('inbox')->name('inbox.')->group(function () {
 
     Route::middleware('can:manage inbox mailboxes')->group(function () {
         Route::get('mailboxes', [MailboxesController::class, 'index'])->name('mailboxes.index');
+        Route::get('mailboxes/create', [MailboxesController::class, 'create'])->name('mailboxes.create');
         Route::post('mailboxes', [MailboxesController::class, 'store'])->name('mailboxes.store');
+        Route::post('mailboxes/test', [MailboxesController::class, 'testNew'])->name('mailboxes.test-new');
         Route::get('mailboxes/{inboxMailbox}/edit', [MailboxesController::class, 'edit'])
             ->whereNumber('inboxMailbox')->name('mailboxes.edit');
         Route::patch('mailboxes/{inboxMailbox}', [MailboxesController::class, 'update'])

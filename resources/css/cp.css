@@ -1,0 +1,10 @@
+/*
+ * Statamic's own Tailwind entry, never bare `tailwindcss`: the bare package
+ * would re-emit Preflight and the default utilities into the shared layers
+ * and flip other screens' dark variants. Everything visual comes from the
+ * `@statamic/cms/ui` components; this only compiles the few utilities the
+ * templates use for layout.
+ */
+@import "@statamic/cms/tailwind.css";
+
+@source "../js";

@@ -84,6 +84,22 @@ it('refuses to hide the mailbox\'s own domain', function () {
     expect(BlockRule::count())->toBe(0)->and(Conversation::count())->toBe(1);
 });
 
+it('refuses to hide a whole freemail domain, where every sender is someone else', function () {
+    $raw = str_replace('bob@example.org', 'bob.tenor@gmail.com', mailFixture('06-same-subject-other-sender.eml'));
+    $this->imap->client($this->mailbox)->deliver('INBOX', $raw);
+    app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
+
+    $this->actingAs($this->user)
+        ->postJson('/cp/inbox/conversations/'.Conversation::sole()->id.'/block', ['scope' => 'domain'])
+        ->assertStatus(422);
+
+    $row = $this->actingAs($this->user)->getJson('/cp/inbox?tab=new')->json('data.0');
+
+    expect(BlockRule::count())->toBe(0)
+        ->and(Conversation::count())->toBe(1)
+        ->and($row['can_hide_domain'])->toBeFalse();
+});
+
 it('lets future mail through again once the rule is removed', function () {
     $client = deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['06-same-subject-other-sender.eml']]);
 

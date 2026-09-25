@@ -31,7 +31,18 @@ export function fromMailbox(mailbox = {}) {
         append_sent: mailbox.append_sent ?? true,
         import_since: (mailbox.import_since ?? '').slice(0, 10),
         active: mailbox.active ?? true,
+        skip_bulk: mailbox.skip_bulk ?? true,
+        // One per line in the form, a list for the API.
+        aliases: (mailbox.aliases ?? []).join('\n'),
     };
+}
+
+/** The aliases field, one address per line (commas work too), as a list. */
+export function aliasList(text) {
+    return String(text ?? '')
+        .split(/[\n,;]+/)
+        .map((a) => a.trim())
+        .filter(Boolean);
 }
 
 const norm = (value) => String(value ?? '').trim().toLowerCase();
@@ -92,6 +103,7 @@ export function payload(form) {
     return {
         name: form.name,
         email: form.email,
+        from_name: form.from_name || null,
         imap_host: form.imap_host,
         imap_port: number(form.imap_port),
         imap_encryption: form.imap_encryption,
@@ -105,6 +117,8 @@ export function payload(form) {
         append_sent: Boolean(form.append_sent),
         import_since: form.import_since || null,
         active: Boolean(form.active),
+        skip_bulk: form.skip_bulk === undefined ? true : Boolean(form.skip_bulk),
+        aliases: aliasList(form.aliases),
     };
 }
 
@@ -131,12 +145,14 @@ export const TAB_FIELDS = {
     account: ['name', 'email', 'username', 'password'],
     servers: ['imap_host', 'imap_port', 'imap_encryption', 'smtp_host', 'smtp_port', 'smtp_encryption'],
     folders: ['inbox_folder', 'sent_folder', 'append_sent', 'import_since', 'active'],
+    filter: ['skip_bulk', 'aliases'],
 };
 
 export function tabsWithErrors(errors) {
     const tabs = new Set();
     for (const [tab, keys] of Object.entries(TAB_FIELDS)) {
-        if (Object.keys(errors ?? {}).some((k) => keys.includes(k))) tabs.add(tab);
+        // `aliases.0` belongs to `aliases`.
+        if (Object.keys(errors ?? {}).some((k) => keys.includes(k.split('.')[0]))) tabs.add(tab);
     }
 
     return tabs;

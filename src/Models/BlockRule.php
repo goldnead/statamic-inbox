@@ -27,6 +27,24 @@ class BlockRule extends Model
 
     protected $guarded = ['id'];
 
+    /**
+     * Domains where every address is somebody else. Hiding one of them
+     * would hide half of all customers, so only single senders there.
+     */
+    public const FREEMAIL = [
+        'gmail.com', 'googlemail.com', 'gmx.de', 'gmx.net', 'gmx.at', 'gmx.ch', 'web.de', 't-online.de',
+        'outlook.com', 'outlook.de', 'hotmail.com', 'hotmail.de', 'live.com', 'live.de', 'msn.com',
+        'yahoo.com', 'yahoo.de', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'posteo.de', 'posteo.net',
+        'mailbox.org', 'freenet.de', 'arcor.de', 'proton.me', 'protonmail.com', 'gmx.com', 'mail.de', 'online.de',
+    ];
+
+    public static function canHideDomainOf(string $email): bool
+    {
+        $domain = self::domainOf($email);
+
+        return $domain !== '' && ! in_array($domain, [...self::FREEMAIL, ...(array) config('inbox.filter.freemail_domains', [])], true);
+    }
+
     public static function domainOf(string $email): string
     {
         $at = strrpos($email, '@');

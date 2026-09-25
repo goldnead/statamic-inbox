@@ -21,10 +21,12 @@
 use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Models\Attachment;
+use Goldnead\StatamicInbox\Models\BlockRule;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\FetchFailure;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
+use Goldnead\StatamicInbox\Models\SkippedMessage;
 use Goldnead\StatamicInbox\Tests\Fakes\FakeMailboxClientFactory;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Carbon;
@@ -51,6 +53,8 @@ Attachment::query()->delete();
 Message::query()->delete();
 Conversation::query()->delete();
 FetchFailure::query()->delete();
+SkippedMessage::query()->delete();
+BlockRule::query()->delete();
 Mailbox::query()->delete();
 
 // ── LeadHub: Anna is a contact, Max is not ───────────────────────────────
@@ -64,6 +68,10 @@ if (class_exists($leadhub)) {
         'tags' => ['Coaching', 'Online'],
         'source' => 'website',
     ]);
+    // The music shop is a contact: its newsletter comes through although
+    // it is bulk mail (the filter's exception), so the blocked remote images
+    // still have a mail to show them on.
+    $leadhub::create(['email' => 'newsletter@shop.example', 'company' => 'Notenshop', 'source' => 'import']);
 }
 
 // ── Mailboxes ────────────────────────────────────────────────────────────
@@ -190,17 +198,46 @@ $client->deliver('INBOX', $raw([
     'To' => 'adrian@goldner.test',
 ], "Hallo Adrian,\n\nder Probenplan für Oktober kommt erst nächste Woche. Ich melde mich dann.\n\nSophie\n"));
 
+// ── The filter (0.2): first contacts for "Neu", bulk mail that is skipped ─
+$client->deliver('INBOX', $raw([
+    'Date' => 'Fri, 25 Sep 2026 10:02:00 +0200',
+    'Message-ID' => '<clara-001@example.de>',
+    'Subject' => 'Einzelstunden für eine Altistin?',
+    'From' => 'Clara Neumann <clara.neumann@example.de>',
+    'To' => 'adrian@goldner.test',
+], "Hallo Adrian,\n\nich singe Alt in einem Kammerchor und würde gern an meiner Tiefe arbeiten. Gibst du Einzelstunden, auch online?\n\nViele Grüße\nClara\n"));
+$client->deliver('INBOX', $raw([
+    'Date' => 'Thu, 24 Sep 2026 17:30:00 +0200',
+    'Message-ID' => '<vorstand-001@liederkranz.example>',
+    'Subject' => 'Anfrage Chorleitung ab Januar',
+    'From' => 'Vorstand Liederkranz <vorstand@liederkranz.example>',
+    'To' => 'adrian@goldner.test',
+], "Sehr geehrter Herr Goldner,\n\nunser Chorleiter hört zum Jahresende auf. Hätten Sie Interesse, sich die Chorleitung anzusehen?\n\nMit freundlichen Grüßen\nder Vorstand\n"));
+foreach (['10-list-id.eml', '12-precedence-bulk.eml', '14-feedback-id.eml', '15-mailchimp.eml', '16-noreply.eml', '17-bounce.eml'] as $bulk) {
+    $client->deliver('INBOX', $fixture($bulk));
+}
+
 app(MailboxFetcher::class)->fetch($coaching->fresh());
 
 // ── States ───────────────────────────────────────────────────────────────
 $bySubject = fn (string $subject) => Conversation::query()->where('subject', 'like', $subject.'%')->firstOrFail();
 
-$bySubject('Herbstangebote')->forceFill(['unread' => false])->save();
+// Max, Lena, Jonas and Sophie are taken over, so they sit in the other tabs.
+// Clara and the Liederkranz stay first contacts, in "Neu".
+foreach (['Stimmbildung', 'Rechnung September', 'Danke für den Workshop', 'Probenplan Oktober'] as $taken) {
+    $bySubject($taken)->forceFill(['accepted_at' => Carbon::now(), 'status' => 'open'])->save();
+}
+
 // Unread on purpose, so the list shows the dot next to read rows.
 $bySubject('Frage zum Coaching')->forceFill(['unread' => true])->save();
 $bySubject('Rechnung September')->forceFill(['status' => 'waiting', 'unread' => false])->save();
 $bySubject('Danke für den Workshop')->forceFill(['status' => 'closed', 'unread' => false])->save();
 $bySubject('Probenplan Oktober')->forceFill(['snoozed_until' => Carbon::now()->addDays(3)->setTime(8, 0), 'unread' => false])->save();
+
+// One hidden domain, for the list on the mailbox page.
+BlockRule::query()->firstOrCreate([
+    'mailbox_id' => $coaching->id, 'type' => 'domain', 'value' => 'gewinnspiel.example',
+]);
 
 // A reply to Max that failed at the SMTP server: stored with its error.
 $max = $bySubject('Stimmbildung');

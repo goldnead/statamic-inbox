@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 
-vi.mock('axios', () => ({ default: { post: vi.fn(), patch: vi.fn() } }));
+vi.mock('axios', () => ({ default: { post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
 import axios from 'axios';
 
 import ReplyComposer from '../../resources/js/components/ReplyComposer.vue';
 import MessageFrame from '../../resources/js/components/MessageFrame.vue';
 import MailboxEdit from '../../resources/js/pages/Mailboxes/Edit.vue';
+import HideSenderModal from '../../resources/js/components/HideSenderModal.vue';
 
 const urls = { reply: '/reply', draft: '/draft', template: '/template', update: '/u', index: '/i', contact: '/c' };
 
@@ -189,5 +190,50 @@ describe('Mailboxes/Edit', () => {
         expect(globalThis.Statamic.$toast.error).toHaveBeenCalledWith('Something went wrong');
         expect(wrapper.vm.$.setupState.activeTab).toBe('servers');
         expect(wrapper.find('[data-stub="Field"][data-attr-id="smtp_host"]').attributes('data-attr-error')).toBe('Private address.');
+    });
+
+    it('shows the filter: skipped bulk mail, the switch, the aliases and the hidden senders to remove', async () => {
+        axios.delete.mockResolvedValueOnce({ data: { deleted: true } });
+        const wrapper = mount(MailboxEdit, {
+            props: {
+                ...props,
+                mailbox: { ...mailbox, skip_bulk: true, aliases: ['kontakt@b.test'] },
+                skippedBulk: 12,
+                rules: [{ id: 3, type: 'domain', value: 'spam.example', delete_url: '/m/1/rules/3' }],
+            },
+        });
+
+        expect(wrapper.find('[data-inbox-skipped-bulk]').attributes('data-attr-text')).toBe('12 bulk mails skipped in the last 30 days.');
+        expect(wrapper.find('textarea#aliases').element.value).toBe('kontakt@b.test');
+        expect(wrapper.find('[data-inbox-rule="spam.example"]').exists()).toBe(true);
+
+        await wrapper.find('[data-inbox-rule="spam.example"] [data-attr-text="Remove"]').trigger('click');
+        await flushPromises();
+
+        expect(axios.delete).toHaveBeenCalledWith('/m/1/rules/3');
+        expect(wrapper.find('[data-inbox-rule="spam.example"]').exists()).toBe(false);
+        expect(wrapper.find('[data-inbox-rules-empty]').exists()).toBe(true);
+    });
+});
+
+describe('HideSenderModal', () => {
+    it('says the conversations go here but the mails stay in Gmail, and hides only on confirm', async () => {
+        axios.post.mockResolvedValueOnce({ data: { deleted: 2, redirect: '/i?tab=new' } });
+        const wrapper = mount(HideSenderModal, {
+            props: { open: true, scope: 'domain', address: 'info@verlag.example', isGmail: true, url: '/block' },
+        });
+
+        const text = wrapper.find('[data-inbox-hide-dialog]').text();
+
+        expect(text).toContain('Nobody from verlag.example shows up here any more.');
+        expect(text).toContain('deleted in Statamic');
+        expect(text).toContain('In Gmail the mails stay as they are.');
+        expect(axios.post).not.toHaveBeenCalled();
+
+        await wrapper.find('[data-confirm]').trigger('click');
+        await flushPromises();
+
+        expect(axios.post).toHaveBeenCalledWith('/block', { scope: 'domain' });
+        expect(wrapper.emitted('hidden')[0][0].redirect).toBe('/i?tab=new');
     });
 });

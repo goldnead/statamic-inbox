@@ -33,6 +33,7 @@ import {
     TabList,
     Tabs,
     TabTrigger,
+    Textarea,
 } from '@statamic/cms/ui';
 
 import ProblemNotice from '../../components/ProblemNotice.vue';
@@ -59,7 +60,23 @@ const props = defineProps({
     storeUrl: { type: String, required: true },
     updateUrl: { type: String, default: null },
     testUrl: { type: String, required: true },
+    // The filter: bulk mail left out in the last 30 days, hidden senders.
+    skippedBulk: { type: Number, default: 0 },
+    rules: { type: Array, default: () => [] },
 });
+
+// ── Filter: hidden senders and domains ──────────────────────────────────
+const blockRules = ref([...props.rules]);
+
+async function removeRule(rule) {
+    try {
+        await axios.delete(rule.delete_url);
+        blockRules.value = blockRules.value.filter((r) => r.id !== rule.id);
+        globalThis.Statamic?.$toast?.success?.(__('Rule removed'));
+    } catch (e) {
+        globalThis.Statamic?.$toast?.error?.(firstMessage(e, __('Something went wrong')));
+    }
+}
 
 const stored = ref({ ...props.mailbox });
 const form = ref(fromMailbox(props.mailbox));
@@ -329,6 +346,10 @@ function onThisPage(problem) {
                     {{ __('Folders and import') }}
                     <Badge v-if="tabsWithErrors.has('folders')" color="red" pill class="ms-1.5" text="!" :aria-label="__('This tab has errors')" />
                 </TabTrigger>
+                <TabTrigger name="filter" data-inbox-tab-filter>
+                    {{ __('Filter') }}
+                    <Badge v-if="tabsWithErrors.has('filter')" color="red" pill class="ms-1.5" text="!" :aria-label="__('This tab has errors')" />
+                </TabTrigger>
             </TabList>
 
             <TabContent name="account">
@@ -482,6 +503,59 @@ function onThisPage(problem) {
                         >
                             <Switch id="active" v-model="form.active" />
                         </Field>
+                    </Card>
+                </Panel>
+            </TabContent>
+
+            <TabContent name="filter">
+                <Panel class="mt-4">
+                    <Card class="space-y-6">
+                        <Field
+                            id="skip_bulk"
+                            :label="__('Skip bulk mail')"
+                            :error="errors.skip_bulk"
+                            :instructions="__('Newsletters, mailings, automatic notifications and mails without a reply address are not taken over. They stay in your mail program. Mail from contacts and replies in a conversation always come through.')"
+                        >
+                            <Switch id="skip_bulk" v-model="form.skip_bulk" data-inbox-skip-bulk />
+                        </Field>
+                        <Description
+                            v-if="!isNew"
+                            data-inbox-skipped-bulk
+                            :text="skippedBulk === 1
+                                ? __('One bulk mail skipped in the last 30 days.')
+                                : __(':count bulk mails skipped in the last 30 days.', { count: skippedBulk })"
+                        />
+
+                        <Field
+                            id="aliases"
+                            :label="__('Further own addresses')"
+                            :error="errors.aliases || errors['aliases.0'] || errors['aliases.1'] || errors['aliases.2']"
+                            :instructions="__('One per line, for example an alias that arrives in this mailbox. Mail between your own addresses makes no conversation.')"
+                        >
+                            <Textarea id="aliases" v-model="form.aliases" :rows="3" class="font-mono" data-inbox-aliases />
+                        </Field>
+                    </Card>
+                </Panel>
+
+                <Panel v-if="!isNew" class="mt-6" :heading="__('Hidden senders and domains')" data-inbox-rules>
+                    <Card>
+                        <p v-if="!blockRules.length" class="text-sm text-gray-600 dark:text-gray-400" data-inbox-rules-empty>
+                            {{ __('Nothing is hidden. In the New tab you can hide a sender or a whole domain.') }}
+                        </p>
+                        <ul v-else class="divide-y divide-gray-200 dark:divide-gray-800">
+                            <li
+                                v-for="rule in blockRules"
+                                :key="rule.id"
+                                class="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                                :data-inbox-rule="rule.value"
+                            >
+                                <span class="flex min-w-0 items-center gap-2">
+                                    <Badge pill :text="rule.type === 'domain' ? __('Domain') : __('Sender')" />
+                                    <span class="truncate font-mono text-sm">{{ rule.value }}</span>
+                                </span>
+                                <Button size="sm" variant="ghost" icon="trash" :text="__('Remove')" @click="removeRule(rule)" />
+                            </li>
+                        </ul>
                     </Card>
                 </Panel>
             </TabContent>

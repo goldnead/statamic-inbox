@@ -169,7 +169,7 @@ class ConversationsController extends Controller
                     ->whereColumn('inbox_messages.conversation_id', 'inbox_conversations.id')
                     ->whereNotNull('send_error'),
             ])
-            ->with('mailbox:id,name,email')
+            ->with('mailbox:id,name,email,imap_host,smtp_host')
             ->when($request->query('mailbox'), fn ($q, $id) => $q->where('mailbox_id', (int) $id))
             ->when($request->query('search') ?? $request->query('q'), function ($q, $search) {
                 $like = '%'.str_replace(['%', '_'], ['\%', '\_'], (string) $search).'%';
@@ -215,6 +215,11 @@ class ConversationsController extends Controller
             'mailbox' => $c->mailbox?->name,
             'show_url' => cp_route('inbox.conversations.show', $c->id),
             'update_url' => cp_route('inbox.conversations.update', $c->id),
+            // For the "Neu" tab's actions.
+            'accept_url' => cp_route('inbox.conversations.accept', $c->id),
+            'block_url' => cp_route('inbox.conversations.block', $c->id),
+            'can_hide_domain' => BlockRule::canHideDomainOf($c->counterpart_email),
+            'is_gmail' => $c->mailbox !== null && (Mailbox::isGmailHost($c->mailbox->imap_host) || Mailbox::isGmailHost($c->mailbox->smtp_host)),
         ])->all();
 
         return response()->json([
@@ -263,7 +268,11 @@ class ConversationsController extends Controller
                 'snoozed_until' => $conversation->snoozed_until?->toIso8601String(),
                 'last_message_at' => $conversation->last_message_at?->toIso8601String(),
             ],
-            'mailbox' => $conversation->mailbox?->only(['id', 'name', 'email']),
+            'mailbox' => $conversation->mailbox === null ? null : [
+                ...$conversation->mailbox->only(['id', 'name', 'email']),
+                // The hide dialog names where the mails stay.
+                'is_gmail' => Mailbox::isGmailHost($conversation->mailbox->imap_host) || Mailbox::isGmailHost($conversation->mailbox->smtp_host),
+            ],
             'messages' => $conversation->messages()->with('attachments')->get()->map(function (Message $m) use ($explainer, $conversation) {
                 $attachments = $m->attachments->map(fn (Attachment $a) => [
                     ...$a->only(['id', 'filename', 'mime', 'size', 'content_id']),
@@ -290,6 +299,8 @@ class ConversationsController extends Controller
             'leadhub' => $contacts->available(),
             'templates' => $templates->options(),
             'ai' => (string) config('inbox.ai.api_key') !== '',
+            // Not for gmail.com and the like: that would hide everyone there.
+            'canHideDomain' => BlockRule::canHideDomainOf($conversation->counterpart_email),
             'canReply' => Gate::allows('reply inbox'),
             'urls' => [
                 'index' => cp_route('inbox.index'),
@@ -298,6 +309,8 @@ class ConversationsController extends Controller
                 'draft' => cp_route('inbox.conversations.draft', $conversation->id),
                 'template' => cp_route('inbox.conversations.template', $conversation->id),
                 'contact' => cp_route('inbox.conversations.contact', $conversation->id),
+                'accept' => cp_route('inbox.conversations.accept', $conversation->id),
+                'block' => cp_route('inbox.conversations.block', $conversation->id),
             ],
         ]);
     }
@@ -393,6 +406,10 @@ class ConversationsController extends Controller
 
         if ($value === '' || ($scope === BlockRule::DOMAIN && in_array($value, $ownDomains, true))) {
             return response()->json(['message' => __('Your own domain cannot be hidden.')], 422);
+        }
+
+        if ($scope === BlockRule::DOMAIN && ! BlockRule::canHideDomainOf($address)) {
+            return response()->json(['message' => __('Many different people write from :domain. Hide only this sender.', ['domain' => $value])], 422);
         }
 
         $rule = BlockRule::query()->firstOrCreate(['mailbox_id' => $mailbox->id, 'type' => $scope, 'value' => $value]);

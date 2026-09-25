@@ -9,6 +9,7 @@ import { computed, ref } from 'vue';
 import axios from 'axios';
 import { Head, router } from '@statamic/cms/inertia';
 import {
+    Alert,
     Badge,
     Button,
     CardPanel,
@@ -29,6 +30,7 @@ import {
 import MessageItem from '../../components/MessageItem.vue';
 import ReplyComposer from '../../components/ReplyComposer.vue';
 import ContactCard from '../../components/ContactCard.vue';
+import HideSenderModal from '../../components/HideSenderModal.vue';
 import { fullDateTime, snoozePresets, toLocalInput } from '../../support/format.js';
 import { initiallyExpanded } from '../../support/mailBody.js';
 import { isSnoozed, statusColor, statusLabel } from '../../support/status.js';
@@ -42,6 +44,7 @@ const props = defineProps({
     leadhub: { type: Boolean, default: false },
     templates: { type: Array, default: () => [] },
     ai: { type: Boolean, default: false },
+    canHideDomain: { type: Boolean, default: true },
     canReply: { type: Boolean, default: false },
     urls: { type: Object, required: true },
 });
@@ -120,10 +123,32 @@ function applyCustom() {
     snoozeUntil(date);
 }
 
+// ── A first contact ("Neu") ─────────────────────────────────────────────
+const isNew = computed(() => state.value.status === 'new');
+const hideScope = ref(null);
+
+async function accept() {
+    busy.value = true;
+    try {
+        const { data } = await axios.post(props.urls.accept);
+        state.value = { ...state.value, ...data.conversation };
+        globalThis.Statamic?.$toast?.success?.(__('Taken over'));
+    } catch (e) {
+        globalThis.Statamic?.$toast?.error?.(firstMessage(e, __('Something went wrong')));
+    } finally {
+        busy.value = false;
+    }
+}
+
+function hidden(data) {
+    router.visit(data?.redirect ?? props.urls.index);
+}
+
 // ── Contact ─────────────────────────────────────────────────────────────
 function contactCreated(created) {
     contact.value = created;
-    state.value = { ...state.value, contact_id: created?.id ?? null };
+    // A contact makes it relevant; the server moved it out of "Neu".
+    state.value = { ...state.value, contact_id: created?.id ?? null, status: state.value.status === 'new' ? 'open' : state.value.status };
     router.reload({ only: ['contact'], onSuccess: (page) => { contact.value = page.props.contact; } });
 }
 
@@ -155,7 +180,7 @@ function reloadThread() {
                     <DropdownMenu>
                         <DropdownItem icon="mail" :text="__('Mark as unread')" data-inbox-mark-unread @click="markUnread" />
                         <DropdownItem v-if="state.status !== 'waiting'" icon="time-clock" :text="__('Mark as waiting')" @click="setStatus('waiting')" />
-                        <DropdownItem v-if="state.status !== 'open'" icon="mail-inbox-content" :text="__('Move to open')" @click="setStatus('open')" />
+                        <DropdownItem v-if="state.status !== 'open' && !isNew" icon="mail-inbox-content" :text="__('Move to open')" @click="setStatus('open')" />
                         <DropdownItem v-if="snoozed" icon="alert-alarm-bell" :text="__('End snooze')" @click="update({ snoozed_until: null }, __('Snooze ended'))" />
                         <template v-if="contact">
                             <DropdownSeparator />
@@ -181,7 +206,18 @@ function reloadThread() {
                 </Dropdown>
 
                 <CommandPaletteItem
-                    v-if="state.status !== 'closed'"
+                    v-if="isNew"
+                    category="Actions"
+                    :text="__('Accept')"
+                    icon="checkmark"
+                    :action="accept"
+                    prioritize
+                    v-slot="{ text }"
+                >
+                    <Button variant="primary" icon="checkmark" :text="text" :loading="busy" data-inbox-accept @click="accept" />
+                </CommandPaletteItem>
+                <CommandPaletteItem
+                    v-else-if="state.status !== 'closed'"
                     category="Actions"
                     :text="__('Mark as done')"
                     icon="checkmark"
@@ -207,6 +243,18 @@ function reloadThread() {
 
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div class="min-w-0 space-y-6">
+                <Alert v-if="isNew" variant="info" data-inbox-first-contact>
+                    <Heading :text="__('A first contact')" />
+                    <p class="mt-1 text-sm">
+                        {{ __('You have not written to :address before, and the address is not a contact. Take the conversation over, create a contact, or hide the sender.', { address: state.counterpart_email }) }}
+                    </p>
+                    <div v-if="canReply" class="mt-3 flex flex-wrap gap-2">
+                        <Button size="sm" icon="checkmark" :text="__('Accept')" :disabled="busy" @click="accept" />
+                        <Button size="sm" icon="eye-closed" :text="__('Hide sender')" data-inbox-hide-sender @click="hideScope = 'sender'" />
+                        <Button v-if="canHideDomain" size="sm" icon="eye-closed" :text="__('Hide domain')" data-inbox-hide-domain @click="hideScope = 'domain'" />
+                    </div>
+                </Alert>
+
                 <Panel data-inbox-thread>
                     <PanelHeader class="flex items-center justify-between gap-2">
                         <Heading :text="__('Conversation')" />
@@ -284,6 +332,16 @@ function reloadThread() {
             </aside>
         </div>
     </div>
+
+    <HideSenderModal
+        :open="hideScope !== null"
+        :scope="hideScope ?? 'sender'"
+        :address="state.counterpart_email"
+        :is-gmail="mailbox?.is_gmail ?? false"
+        :url="urls.block"
+        @update:open="!$event && (hideScope = null)"
+        @hidden="hidden"
+    />
 
     <ConfirmationModal
         :open="customOpen"

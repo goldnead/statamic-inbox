@@ -3,7 +3,7 @@ import { buildSrcdoc, initiallyExpanded, listedAttachments, splitText } from '..
 import {
     applyPreset, detectPreset, fromMailbox, isGmail, passwordRequired, payload, tabsWithErrors, testPayload,
 } from '../../resources/js/support/mailboxForm.js';
-import { dismissedSignatures, dismissSignature, isSnoozed, mailboxProblems } from '../../resources/js/support/status.js';
+import { dismissedSignatures, dismissSignature, isSnoozed, mailboxProblems, statusLabel, TABS } from '../../resources/js/support/status.js';
 import { listTime, snoozePresets } from '../../resources/js/support/format.js';
 
 const gmailReply = '<div dir="ltr"><div>Dienstag passt super, danke!</div></div><br><div><div dir="ltr">Am So., 20. Sept. 2026 um 14:00 Uhr schrieb Adrian Goldner &lt;<a href="mailto:a@b.test">a@b.test</a>&gt;:<br></div><blockquote>Hallo Anna</blockquote></div>';
@@ -114,12 +114,32 @@ describe('mailbox form', () => {
         expect(payload({ ...form, imap_port: '993' }).imap_port).toBe(993);
     });
 
+    it('sends the sender name, the bulk switch and the aliases', () => {
+        const form = fromMailbox({ ...stored, from_name: 'Adrian Goldner', skip_bulk: false, aliases: ['kontakt@goldner.test'] });
+
+        expect(form.aliases).toBe('kontakt@goldner.test');
+
+        const sent = payload({ ...form, aliases: ' Kontakt@goldner.test \n\n chor@goldner.test ' });
+
+        expect(sent.from_name).toBe('Adrian Goldner');
+        expect(sent.skip_bulk).toBe(false);
+        expect(sent.aliases).toEqual(['Kontakt@goldner.test', 'chor@goldner.test']);
+        expect(fromMailbox().skip_bulk).toBe(true);
+        expect(payload(fromMailbox()).aliases).toEqual([]);
+    });
+
     it('knows which tab an error sits on', () => {
+        expect([...tabsWithErrors({ 'aliases.0': 'x' })]).toEqual(['filter']);
         expect([...tabsWithErrors({ password: 'x', smtp_host: 'y' })].sort()).toEqual(['account', 'servers']);
     });
 });
 
 describe('status and dates', () => {
+    it('has a tab for first contacts, after the four of relevant conversations', () => {
+        expect(TABS).toEqual(['open', 'waiting', 'closed', 'snoozed', 'new']);
+        expect(statusLabel('new')).toBe('New');
+    });
+
     it('words what the fetch could not do', () => {
         const refused = { code: 'auth', title: 'The app password for Chor was refused', text: 'Renew it.', action: { label: 'Renew password', url: '/edit?tab=account' }, detail: '535' };
         const problems = mailboxProblems(

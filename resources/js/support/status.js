@@ -1,5 +1,8 @@
-/** The three states of a conversation, plus snoozed, as the CP names them. */
-export const TABS = ['open', 'waiting', 'closed', 'snoozed'];
+/**
+ * The three states of a relevant conversation, snoozed, and "new": first
+ * contacts from people the mailbox does not know yet, kept apart.
+ */
+export const TABS = ['open', 'waiting', 'closed', 'snoozed', 'new'];
 
 export function statusLabel(status) {
     return {
@@ -7,12 +10,13 @@ export function statusLabel(status) {
         waiting: __('Waiting'),
         closed: __('Closed'),
         snoozed: __('Snoozed'),
+        new: __('New'),
     }[status] ?? status;
 }
 
 /** Badge colour per state: open wants attention, closed is done. */
 export function statusColor(status) {
-    return { open: 'blue', waiting: 'amber', closed: 'green', snoozed: 'purple' }[status] ?? 'default';
+    return { open: 'blue', waiting: 'amber', closed: 'green', snoozed: 'purple', new: 'cyan' }[status] ?? 'default';
 }
 
 /** Whether a conversation is snoozed right now. */

@@ -1,7 +1,8 @@
 <script setup>
 /**
  * The inbox: conversations in four tabs (Offen, Wartet, Erledigt,
- * Geschlummert), searched, filtered by mailbox, newest first.
+ * Geschlummert), searched, filtered by mailbox, newest first. A fifth, Neu,
+ * holds first contacts from unknown people, with their own actions.
  *
  * Core's Listing in server mode: it asks this page's own URL for JSON (the
  * controller answers `wantsJson` with rows plus `meta.columns`), so search,
@@ -33,6 +34,7 @@ import {
 import { fullDateTime, listTime } from '../../support/format.js';
 import { dismissedSignatures, dismissSignature, mailboxProblems, statusLabel, TABS } from '../../support/status.js';
 import ProblemNotice from '../../components/ProblemNotice.vue';
+import HideSenderModal from '../../components/HideSenderModal.vue';
 import { firstMessage } from '../../support/serverErrors.js';
 
 const props = defineProps({
@@ -81,6 +83,23 @@ watch(activeTab, (tab) => {
 
 // ── Row actions ─────────────────────────────────────────────────────────
 const listing = ref(null);
+
+// "Neu": take a first contact over, or hide the sender or the whole domain.
+async function accept(row) {
+    try {
+        await axios.post(row.accept_url);
+        globalThis.Statamic?.$toast?.success?.(__('Taken over'));
+        listing.value?.refresh?.();
+    } catch (e) {
+        globalThis.Statamic?.$toast?.error?.(firstMessage(e, __('Something went wrong')));
+    }
+}
+
+const hiding = ref(null);
+
+function hide(row, scope) {
+    hiding.value = { scope, address: row.counterpart_email, url: row.block_url, isGmail: row.is_gmail };
+}
 
 async function patch(row, changes, message) {
     try {
@@ -213,7 +232,12 @@ async function patch(row, changes, message) {
                 </template>
                 <template #prepended-row-actions="{ row }">
                     <DropdownItem :text="__('Open conversation')" icon="mail" :href="row.show_url" />
-                    <template v-if="canReply">
+                    <template v-if="canReply && row.status === 'new'">
+                        <DropdownItem :text="__('Accept')" icon="checkmark" data-inbox-accept @click="accept(row)" />
+                        <DropdownItem :text="__('Hide sender')" icon="eye-closed" variant="destructive" data-inbox-hide-sender @click="hide(row, 'sender')" />
+                        <DropdownItem v-if="row.can_hide_domain" :text="__('Hide domain')" icon="eye-closed" variant="destructive" data-inbox-hide-domain @click="hide(row, 'domain')" />
+                    </template>
+                    <template v-else-if="canReply">
                         <DropdownItem
                             v-if="row.status !== 'closed'"
                             :text="__('Mark as done')"
@@ -247,6 +271,22 @@ async function patch(row, changes, message) {
                 class="mt-4"
                 :text="__('Snoozed conversations come back to their list at the chosen time.')"
             />
+            <Description
+                v-if="activeTab === 'new'"
+                class="mt-4"
+                data-inbox-new-hint
+                :text="__('First contacts from people you have not written to yet. Newsletters, invoices and automatic mails do not arrive here at all; you find them in your mail program.')"
+            />
         </template>
     </div>
+
+    <HideSenderModal
+        :open="hiding !== null"
+        :scope="hiding?.scope ?? 'sender'"
+        :address="hiding?.address ?? ''"
+        :is-gmail="hiding?.isGmail ?? false"
+        :url="hiding?.url ?? ''"
+        @update:open="!$event && (hiding = null)"
+        @hidden="listing?.refresh?.()"
+    />
 </template>

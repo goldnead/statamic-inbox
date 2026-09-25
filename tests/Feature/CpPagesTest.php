@@ -136,7 +136,7 @@ it('renders a conversation with its URLs, the contact link and the reply permiss
         ->and($page['props']['templates'])->toBe([])
         ->and($page['props']['contact']['id'])->toBe($contact->id)
         ->and($page['props']['contact']['url'])->toEndWith('/cp/leadhub/contacts/'.$contact->id)
-        ->and(array_keys($page['props']['urls']))->toBe(['index', 'update', 'reply', 'draft', 'template', 'contact'])
+        ->and(array_keys($page['props']['urls']))->toBe(['index', 'update', 'reply', 'draft', 'template', 'contact', 'accept', 'block'])
         ->and($page['props']['messages'])->toHaveCount(1);
 });
 

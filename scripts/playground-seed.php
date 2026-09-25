@@ -196,6 +196,8 @@ app(MailboxFetcher::class)->fetch($coaching->fresh());
 $bySubject = fn (string $subject) => Conversation::query()->where('subject', 'like', $subject.'%')->firstOrFail();
 
 $bySubject('Herbstangebote')->forceFill(['unread' => false])->save();
+// Unread on purpose, so the list shows the dot next to read rows.
+$bySubject('Frage zum Coaching')->forceFill(['unread' => true])->save();
 $bySubject('Rechnung September')->forceFill(['status' => 'waiting', 'unread' => false])->save();
 $bySubject('Danke für den Workshop')->forceFill(['status' => 'closed', 'unread' => false])->save();
 $bySubject('Probenplan Oktober')->forceFill(['snoozed_until' => Carbon::now()->addDays(3)->setTime(8, 0), 'unread' => false])->save();

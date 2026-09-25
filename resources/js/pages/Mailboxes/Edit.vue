@@ -235,7 +235,7 @@ const failedHalves = computed(() => {
 
         return {
             key: h.key,
-            problem: { ...explained, title: `${h.label}: ${explained.title}`, action: null },
+            problem: { ...onThisPage(explained), title: `${h.label}: ${explained.title}` },
             otherWorks: h.other.ok ? __(':half works.', { half: h.otherLabel }) : null,
         };
     });
@@ -246,7 +246,19 @@ const failedHalves = computed(() => {
 // message the fetch could not read is a warning. No button: the form that
 // fixes it is this one, and the tab it needs is opened instead.
 const lastErrorVariant = computed(() => (stored.value.last_error_scope === 'mailbox' ? 'error' : 'warning'));
-const lastProblem = computed(() => (stored.value.problem ? { ...stored.value.problem, action: null } : null));
+const lastProblem = computed(() => (stored.value.problem ? onThisPage(stored.value.problem) : null));
+
+/**
+ * Elsewhere a refused password says "enter it in the mailbox" and links
+ * here. Here the field is on the page, so the text points at it instead.
+ */
+function onThisPage(problem) {
+    const text = problem.code === 'auth'
+        ? __('Your mail provider did not accept the login. Create a new app password with the provider and enter it below in the Password field.')
+        : problem.text;
+
+    return { ...problem, text, action: null };
+}
 </script>
 
 <template>

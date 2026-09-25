@@ -86,6 +86,9 @@ describe('ReplyComposer', () => {
         expect(notice.find('[data-inbox-problem-action]').attributes('data-attr-href')).toBe('/cp/inbox/mailboxes/1/edit?tab=account');
         // The server's own words stay folded until asked for.
         expect(notice.text()).not.toContain('535 5.7.8');
+        // The fix first, the server's words last, in one row.
+        const buttons = notice.findAll('[data-stub="Button"]').map((b) => b.attributes('data-attr-text'));
+        expect(buttons).toEqual(['Renew password', 'Server message']);
         await notice.find('[data-inbox-problem-detail-toggle]').trigger('click');
         expect(wrapper.find('[data-inbox-problem-detail]').text()).toBe('535 5.7.8');
         expect(wrapper.emitted('failed')).toHaveLength(1);
@@ -148,6 +151,15 @@ describe('Mailboxes/Edit', () => {
         expect(wrapper.find('[data-inbox-test-half="smtp"]').text()).toContain('Sending (SMTP): The connection failed');
         expect(wrapper.find('[data-inbox-test-half="smtp"]').text()).toContain('Receiving (IMAP) works.');
         expect(wrapper.find('[data-inbox-test-half="imap"]').exists()).toBe(false);
+    });
+
+    it('points at the password field on the page instead of linking to it', () => {
+        const problem = { code: 'auth', title: 'The app password for Coaching was refused', text: 'enter it in the mailbox', action: { label: 'Renew password', url: '/x' }, detail: '535' };
+        const wrapper = mount(MailboxEdit, { props: { ...props, mailbox: { ...mailbox, last_error: '535', last_error_scope: 'mailbox', problem } } });
+        const notice = wrapper.find('[data-inbox-last-error]');
+
+        expect(notice.text()).toContain('enter it below in the Password field');
+        expect(notice.find('[data-inbox-problem-action]').exists()).toBe(false);
     });
 
     it('points at the marked fields instead of calling it a failed connection', async () => {

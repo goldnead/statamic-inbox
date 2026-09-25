@@ -4,7 +4,6 @@ namespace Goldnead\StatamicInbox\Support;
 
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Route;
 
 /**
  * What a mail server or the AI said, in words a person can act on.
@@ -152,13 +151,9 @@ class ErrorExplainer
             ],
         };
 
-        $action = null;
-
-        if ($code === 'ai_access' && Gate::allows('manage inbox mailboxes') && Route::has('statamic.cp.brand-context.settings.index')) {
-            $action = ['label' => __('Open inbox settings'), 'url' => cp_route('brand-context.settings.index', ['section' => 'inbox'])];
-        }
-
-        return ['code' => $code, 'title' => $title, 'text' => $text, 'action' => $action, 'detail' => $raw];
+        // No button: the key lives in the server's environment, and no page
+        // in the Control Panel can change it.
+        return ['code' => $code, 'title' => $title, 'text' => $text, 'action' => null, 'detail' => $raw];
     }
 
     /** @return array{label: string, url: string}|null */

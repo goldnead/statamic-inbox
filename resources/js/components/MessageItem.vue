@@ -89,16 +89,17 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
             <div class="space-y-3">
                 <ProblemNotice v-if="sendProblem" :problem="sendProblem" variant="error" data-inbox-send-error>
                     <p class="mt-1">{{ __('The text is kept. Put it back into the reply and send it again once this is fixed.') }}</p>
-                    <div v-if="canReply" class="mt-3">
+                    <template v-if="canReply" #actions>
                         <Button size="sm" variant="ghost" icon="edit" :text="__('Put into reply')" data-inbox-reuse @click="$emit('reuse', message.text || '')" />
-                    </div>
+                    </template>
                 </ProblemNotice>
 
                 <ProblemNotice v-if="filedProblem" :problem="filedProblem" variant="warning" data-inbox-filed-error />
 
-                <p v-if="loadRemote" class="text-xs text-gray-500 dark:text-gray-400" data-inbox-remote-loaded>
-                    {{ __('Images loaded') }}
-                </p>
+                <div v-if="loadRemote" class="flex items-center gap-2" data-inbox-remote-loaded>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ __('Images loaded') }}</span>
+                    <Button size="xs" variant="ghost" :text="__('Block again')" data-inbox-block-again @click="loadRemote = false" />
+                </div>
 
                 <div
                     v-if="message.has_remote_images && !loadRemote"

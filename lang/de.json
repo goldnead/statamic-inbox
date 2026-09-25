@@ -6,6 +6,7 @@
     "Almost always INBOX.": "Fast immer INBOX.",
     "A new mail arrived in a mailbox of the inbox.": "In einem Postfach ist eine neue Mail eingegangen.",
     "Attach file": "Datei anhängen",
+    "Block again": "Wieder blockieren",
     "Cc": "Cc",
     "Check folders": "Ordner prüfen",
     "Check mailbox": "Postfach prüfen",
@@ -56,7 +57,6 @@
     "How to create an app password at :provider:": "So legst du bei :provider ein App-Passwort an:",
     "Images from the internet are blocked, so the sender cannot see that you opened this mail.": "Bilder aus dem Internet sind blockiert, damit der Absender nicht sieht, dass du die Mail geöffnet hast.",
     "Images loaded": "Bilder geladen",
-    "IMAP to receive, SMTP to send, an app password to sign in.": "IMAP zum Empfangen, SMTP zum Senden, ein App-Passwort zum Anmelden.",
     "Import mail since": "Mails übernehmen ab",
     "Inbox": "Postfach-Einstellungen",
     "Inbox folder": "Posteingang",
@@ -106,7 +106,6 @@
     "Open": "Offen",
     "Open contact": "Kontakt öffnen",
     "Open conversation": "Verlauf öffnen",
-    "Open inbox settings": "Postfach-Einstellungen öffnen",
     "Optional, e.g. short, offer a date": "Optional, z. B. kurz, Termin anbieten",
     "Other provider": "Anderer Anbieter",
     "Paused": "Pausiert",
@@ -219,6 +218,7 @@
     "Write something first.": "Schreib zuerst etwas.",
     "You": "Du",
     "Your mail provider did not accept the login. Create a new app password with the provider and enter it in the mailbox.": "Dein Mailanbieter hat die Anmeldung nicht angenommen. Leg beim Anbieter ein neues App-Passwort an und trag es im Postfach ein.",
+    "Your mail provider did not accept the login. Create a new app password with the provider and enter it below in the Password field.": "Dein Mailanbieter hat die Anmeldung nicht angenommen. Leg beim Anbieter ein neues App-Passwort an. Trag es unten im Feld Passwort ein.",
     "Your provider names this folder differently. Check the folder names in the mailbox.": "Dein Anbieter nennt diesen Ordner anders. Prüfe die Ordnernamen im Postfach.",
     "Your reply": "Deine Antwort"
 }

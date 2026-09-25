@@ -86,7 +86,7 @@ function reloadPage() {
                 :href="createUrl"
                 icon="mail-settings"
                 :heading="__('Connect mailbox')"
-                :description="__('IMAP to receive, SMTP to send, an app password to sign in.')"
+                :description="__('The mailbox you already use, with an app password. Google Workspace, Migadu, manitu, All-Inkl or your own server.')"
             />
         </EmptyStateMenu>
     </div>

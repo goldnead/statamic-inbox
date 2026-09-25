@@ -66,7 +66,9 @@ it('tells a missing AI key from a busy AI', function () {
         ->and($this->explainer->explainAi('No AI key configured (ANTHROPIC_API_KEY).')['code'])->toBe('ai_access')
         ->and($this->explainer->explainAi('Overloaded', 529)['code'])->toBe('ai_busy')
         ->and($this->explainer->explainAi('rate_limit_error', 429)['title'])->toBe('The AI is busy right now')
-        ->and($this->explainer->explainAi('The AI could not be reached.')['code'])->toBe('ai_offline');
+        ->and($this->explainer->explainAi('The AI could not be reached.')['code'])->toBe('ai_offline')
+        // The key is in .env; no Control Panel page can fix it, so no button.
+        ->and($this->explainer->explainAi('invalid x-api-key', 401)['action'])->toBeNull();
 });
 
 it('puts the explanation on a failed send and on the stored message', function () {

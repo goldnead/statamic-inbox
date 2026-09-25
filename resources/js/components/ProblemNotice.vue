@@ -40,7 +40,8 @@ const showDetail = ref(false);
         <template v-if="open">
             <p v-if="problem.text">{{ problem.text }}</p>
             <slot />
-            <div v-if="problem.action || dismissible || problem.detail" class="mt-3 flex flex-wrap items-center gap-2">
+            <!-- One row: the fix first, then whatever the caller adds, then the server's text. -->
+            <div v-if="problem.action || dismissible || problem.detail || $slots.actions" class="mt-3 flex flex-wrap items-center gap-2">
                 <Button
                     v-if="problem.action"
                     size="sm"
@@ -48,6 +49,7 @@ const showDetail = ref(false);
                     :text="problem.action.label"
                     data-inbox-problem-action
                 />
+                <slot name="actions" />
                 <Button v-if="dismissible" size="sm" variant="ghost" :text="__('Hide')" data-inbox-dismiss @click="$emit('dismiss')" />
                 <Button
                     v-if="problem.detail"

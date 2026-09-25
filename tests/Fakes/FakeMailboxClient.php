@@ -138,6 +138,21 @@ class FakeMailboxClient implements MailboxClient
             ?? throw new \RuntimeException("No message with UID {$uid} in {$folder}.");
     }
 
+    /** The header block only, as BODY.PEEK[HEADER] returns it. */
+    public function fetchHeaders(string $folder, int $uid): string
+    {
+        $this->guard('fetchHeaders', $folder);
+
+        if (isset($this->brokenUids[$folder][$uid])) {
+            throw $this->brokenUids[$folder][$uid];
+        }
+
+        $raw = $this->folders[$folder][$uid]
+            ?? throw new \RuntimeException("No message with UID {$uid} in {$folder}.");
+
+        return preg_split('/\r?\n\r?\n/', $raw, 2)[0]."\r\n\r\n";
+    }
+
     public function append(string $folder, string $raw, array $flags = ['\\Seen']): void
     {
         $this->guard('append', $folder);

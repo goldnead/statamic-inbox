@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-09-25
+
+First release.
 
 - Control Panel: the inbox as core's Listing (tabs Offen, Wartet, Erledigt, Geschlummert, search,
   mailbox filter, unread dot, failed sends), fetch problems per mailbox above it, an empty state

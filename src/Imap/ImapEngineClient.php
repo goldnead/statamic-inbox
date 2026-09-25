@@ -99,6 +99,37 @@ class ImapEngineClient implements MailboxClient
         return $value === null ? null : (int) $value;
     }
 
+    public function detectAllMailFolder(): ?string
+    {
+        foreach ($this->mailbox()->folders()->get() as $folder) {
+            if (in_array('\\all', array_map('strtolower', $folder->flags()), true)) {
+                return $folder->path();
+            }
+        }
+
+        foreach (['[Gmail]/All Mail', '[Gmail]/Alle Nachrichten'] as $name) {
+            if ($this->mailbox()->folders()->find($name) !== null) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    public function findUid(string $folder, string $messageId): ?int
+    {
+        $query = $this->folder($folder)->messages();
+        $query->messageId($messageId);
+
+        $response = $this->connection()->search([$query->toImap()]);
+
+        foreach ($response->tokensAfter(2) as $token) {
+            return (int) $token->value;
+        }
+
+        return null;
+    }
+
     public function detectSentFolder(): ?string
     {
         $folders = $this->mailbox()->folders()->get();

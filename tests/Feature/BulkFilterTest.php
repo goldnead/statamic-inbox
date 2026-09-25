@@ -33,7 +33,8 @@ it('skips a mail with List-Unsubscribe, records it, and does not record it twice
         ->and($skip->folder)->toBe('INBOX')
         ->and($skip->uid)->toBe(1)
         ->and($skip->reason)->toBe('list_header')
-        ->and($skip->message_id)->toBe('nl-2026-09-24.7781@mailer.shop.example')
+        // Only a hash of the id (review of 0.2.0).
+        ->and($skip->message_id)->toBe(SkippedMessage::keyFor('nl-2026-09-24.7781@mailer.shop.example'))
         ->and($skip->skipped_at)->not->toBeNull();
 
     // The same mail under a new UID, and a second fetch.

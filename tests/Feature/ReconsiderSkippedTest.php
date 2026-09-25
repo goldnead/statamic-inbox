@@ -10,6 +10,8 @@
  * INBOX and All Mail) and imports what no longer counts as bulk mail.
  */
 
+use Goldnead\Leadhub\Models\Contact;
+use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Models\SkippedMessage;
@@ -79,7 +81,7 @@ it('finds a mail by its Message-ID in All Mail when its UID moved', function () 
 it('imports a reply that 0.2.0 skipped because INBOX was read before Sent', function () {
     $this->client->deliver('Sent', mailFixture('02-sent-reply.eml'));
     $uid = $this->client->deliver('INBOX', mailFixture('18-auto-reply-in-thread.eml'));
-    app(Goldnead\StatamicInbox\Fetching\MailboxFetcher::class)->fetch($this->mailbox->fresh());
+    app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
     // What 0.2.0 did to the auto-reply in the same fetch:
     Message::where('message_id', 'anna-ooo-18@mail.gmail.com')->delete();
     SkippedMessage::query()->delete();
@@ -106,7 +108,7 @@ it('takes a new conversation out of Neu when it has become relevant', function (
     $conversation = Conversation::sole();
     expect($conversation->status)->toBe('new');
 
-    Goldnead\Leadhub\Models\Contact::create(['email' => 'carla@example.net']);
+    Contact::create(['email' => 'carla@example.net']);
 
     $this->artisan('inbox:reclassify', ['--mailbox' => $this->mailbox->id])
         ->expectsOutputToContain('out of new: 1')

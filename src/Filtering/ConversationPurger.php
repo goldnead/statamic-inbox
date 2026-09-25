@@ -33,13 +33,19 @@ class ConversationPurger
                 $messages = Message::query()->where('conversation_id', $conversation->id)->get();
 
                 foreach ($messages as $message) {
+                    $why = is_callable($reason) ? $reason($message) : $reason;
+
                     SkippedMessage::query()->firstOrCreate(
-                        ['mailbox_id' => $message->mailbox_id, 'message_id' => $message->message_id],
+                        [
+                            'mailbox_id' => $message->mailbox_id,
+                            // Hashed, as the fetcher writes it (see SkippedMessage).
+                            'message_id' => SkippedMessage::keyFor($message->message_id_full ?? $message->message_id),
+                        ],
                         [
                             'folder' => (string) ($message->folder ?? ''),
                             'uid' => $message->imap_uid,
-                            'sender' => $conversation->counterpart_email,
-                            'reason' => is_callable($reason) ? $reason($message) : $reason,
+                            'sender' => $why === 'blocked' ? $conversation->counterpart_email : null,
+                            'reason' => $why,
                             'skipped_at' => Carbon::now(),
                         ]
                     );

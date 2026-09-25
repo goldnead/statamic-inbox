@@ -391,12 +391,22 @@ class ConversationsController extends Controller
      * blocklist, and every conversation it covers deleted in Statamic with
      * its files. The mails stay on the server.
      */
-    public function block(Request $request, int $inboxConversation, ConversationPurger $purger): JsonResponse
+    public function block(Request $request, int $inboxConversation, ConversationPurger $purger, LeadHubContacts $contacts): JsonResponse
     {
         Gate::authorize('reply inbox');
 
         $conversation = Conversation::query()->with('mailbox')->findOrFail($inboxConversation);
-        $scope = $request->validate(['scope' => ['required', 'in:sender,domain']])['scope'];
+        $input = $request->validate([
+            'scope' => ['required', 'in:sender,domain'],
+            'preview' => ['sometimes', 'boolean'],
+        ]);
+        $scope = $input['scope'];
+
+        // Hiding is triage in "Neu". From a relevant conversation it would
+        // be a way to throw away a customer's history by accident.
+        if ($conversation->status !== Conversation::STATUS_NEW) {
+            return response()->json(['message' => __('Only a first contact can be hidden. This conversation is not in New.')], 422);
+        }
 
         $mailbox = $conversation->mailbox;
         $address = strtolower($conversation->counterpart_email);
@@ -412,10 +422,27 @@ class ConversationsController extends Controller
             return response()->json(['message' => __('Many different people write from :domain. Hide only this sender.', ['domain' => $value])], 422);
         }
 
-        $rule = BlockRule::query()->firstOrCreate(['mailbox_id' => $mailbox->id, 'type' => $scope, 'value' => $value]);
+        $rule = new BlockRule(['mailbox_id' => $mailbox->id, 'type' => $scope, 'value' => $value]);
 
-        $deleted = $rule->applyTo(Conversation::query()->where('mailbox_id', $mailbox->id))->get();
+        // Only first contacts go: nothing answered, no contact, not taken
+        // over. A relevant conversation with the same sender or domain stays,
+        // our own sent mails in it included, and its sender keeps getting
+        // through (the fetch lets contacts and known correspondents pass).
+        $deleted = $rule->applyTo(Conversation::query()->where('mailbox_id', $mailbox->id))
+            ->where('status', Conversation::STATUS_NEW)
+            ->whereNull('contact_id')
+            ->whereNull('accepted_at')
+            ->whereDoesntHave('messages', fn ($q) => $q->where('direction', Message::OUT))
+            ->get()
+            ->filter(fn (Conversation $c) => $contacts->idFor($c->counterpart_email) === null)
+            ->values();
         $count = $deleted->count();
+
+        if ($input['preview'] ?? false) {
+            return response()->json(['count' => $count]);
+        }
+
+        $rule = BlockRule::query()->firstOrCreate($rule->only(['mailbox_id', 'type', 'value']));
         $purger->purge($deleted, 'blocked');
 
         return response()->json([

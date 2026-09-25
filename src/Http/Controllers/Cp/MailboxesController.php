@@ -107,7 +107,9 @@ class MailboxesController extends Controller
      */
     public function destroyRule(int $inboxMailbox, int $inboxRule): JsonResponse
     {
-        Gate::authorize('manage inbox mailboxes');
+        // The undo of "ausblenden", which needs `reply inbox`: whoever may
+        // hide a sender may bring it back.
+        Gate::authorize('reply inbox');
 
         $mailbox = Mailbox::query()->findOrFail($inboxMailbox);
         $rule = BlockRule::query()->where('mailbox_id', $mailbox->id)->findOrFail($inboxRule);

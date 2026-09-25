@@ -112,7 +112,8 @@ it('lets future mail through again once the rule is removed', function () {
     app(MailboxFetcher::class)->fetch($this->mailbox->fresh());
     expect(Conversation::count())->toBe(0);
 
-    $this->actingAs(inboxCpUser(['manage inbox mailboxes']))
+    // The undo takes the same permission as hiding (review of 0.2.0).
+    $this->actingAs($this->user)
         ->deleteJson('/cp/inbox/mailboxes/'.$this->mailbox->id.'/rules/'.BlockRule::sole()->id)
         ->assertSuccessful();
 

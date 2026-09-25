@@ -9,7 +9,9 @@ use Illuminate\Support\Carbon;
 /**
  * A mail the filter left out: bulk mail, a mail to yourself, or one from a
  * hidden sender. Nothing of its content is kept; the record exists so the
- * dedupe sees it and the mailbox page can count it.
+ * dedupe sees it and the mailbox page can count it. The Message-ID is kept
+ * only as a hash (keyFor()), the sender only for hidden senders, where
+ * removing the rule has to find what it held back.
  *
  * @property int $id
  * @property int $mailbox_id
@@ -33,6 +35,16 @@ class SkippedMessage extends Model
     protected $table = 'inbox_skipped_messages';
 
     protected $guarded = ['id'];
+
+    /**
+     * What a skip record keeps of a Message-ID: its hash, nothing readable.
+     * For an id longer than the column this is the same value
+     * MessageIds::key() stores for messages.
+     */
+    public static function keyFor(string $messageId): string
+    {
+        return 'sha256:'.hash('sha256', $messageId);
+    }
 
     protected function casts(): array
     {

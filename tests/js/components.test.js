@@ -221,23 +221,28 @@ describe('Mailboxes/Edit', () => {
 });
 
 describe('HideSenderModal', () => {
-    it('says the conversations go here but the mails stay in Gmail, and hides only on confirm', async () => {
-        axios.post.mockResolvedValueOnce({ data: { deleted: 2, redirect: '/i?tab=new' } });
+    it('asks how many would go, says so, and hides only on confirm', async () => {
+        axios.post
+            .mockResolvedValueOnce({ data: { count: 2 } })
+            .mockResolvedValueOnce({ data: { deleted: 2, redirect: '/i?tab=new' } });
         const wrapper = mount(HideSenderModal, {
             props: { open: true, scope: 'domain', address: 'info@verlag.example', isGmail: true, url: '/block' },
         });
+        await flushPromises();
 
         const text = wrapper.find('[data-inbox-hide-dialog]').text();
 
-        expect(text).toContain('Nobody from verlag.example shows up here any more.');
-        expect(text).toContain('deleted in Statamic');
+        expect(axios.post).toHaveBeenCalledTimes(1);
+        expect(axios.post).toHaveBeenCalledWith('/block', { scope: 'domain', preview: true });
+        expect(text).toContain('New mail from verlag.example no longer shows up here.');
+        expect(wrapper.find('[data-inbox-hide-count]').text()).toBe('2 first contacts are deleted in Statamic, attachments included.');
+        expect(text).toContain('Conversations you answered, contacts and conversations you took over stay');
         expect(text).toContain('In Gmail the mails stay as they are.');
-        expect(axios.post).not.toHaveBeenCalled();
 
         await wrapper.find('[data-confirm]').trigger('click');
         await flushPromises();
 
-        expect(axios.post).toHaveBeenCalledWith('/block', { scope: 'domain' });
+        expect(axios.post).toHaveBeenLastCalledWith('/block', { scope: 'domain' });
         expect(wrapper.emitted('hidden')[0][0].redirect).toBe('/i?tab=new');
     });
 });

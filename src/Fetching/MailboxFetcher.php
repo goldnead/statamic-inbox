@@ -143,11 +143,16 @@ class MailboxFetcher
     /** @return array<string, array{0: string, 1: string}> folder => [cursor column, uidvalidity column] */
     protected function folders(Mailbox $mailbox): array
     {
-        $folders = [$mailbox->inbox_folder ?: 'INBOX' => ['last_uid_inbox', 'uidvalidity_inbox']];
+        // Sent first: a reply in INBOX to a mail of yours from the same fetch
+        // must find its thread, or the filter would take an out-of-office
+        // answer (or a ticket system's) for bulk mail.
+        $folders = [];
 
         if ($mailbox->sent_folder) {
             $folders[$mailbox->sent_folder] = ['last_uid_sent', 'uidvalidity_sent'];
         }
+
+        $folders[$mailbox->inbox_folder ?: 'INBOX'] = ['last_uid_inbox', 'uidvalidity_inbox'];
 
         return $folders;
     }
@@ -247,25 +252,78 @@ class MailboxFetcher
             : "{$folder}, UID {$uid}: {$failure->error}";
     }
 
-    protected function store(Mailbox $mailbox, string $raw, string $folder, int $uid, bool $sentFolder): bool
+    /**
+     * `inbox:reclassify --reconsider-skipped`: would this skipped mail be
+     * left out under today's rules? Returns `import` (and imports it unless
+     * $dry), `known` when it is stored already, or the reason it stays out.
+     * Runs in the mailbox's brand, like a fetch.
+     */
+    public function reconsider(Mailbox $mailbox, string $raw, string $folder, int $uid, bool $sentFolder, bool $dry): string
+    {
+        return BrandContext::runFor((int) $mailbox->brand_id, function () use ($mailbox, $raw, $folder, $uid, $sentFolder, $dry) {
+            $parsed = $this->parser->parse($raw);
+
+            if (Message::query()->where('mailbox_id', $mailbox->id)->where('message_id', MessageIds::key($parsed->messageId))->exists()) {
+                return 'known';
+            }
+
+            [$outgoing, $counterpart] = $this->sides($mailbox, $parsed, $sentFolder);
+            $reason = $this->skipReason($mailbox, $parsed, $outgoing, $counterpart, $mailbox->ownAddresses());
+
+            if ($reason !== null) {
+                return $reason;
+            }
+
+            if (! $dry) {
+                $this->store($mailbox, $raw, $folder, $uid, $sentFolder, reconsidering: true);
+            }
+
+            return 'import';
+        });
+    }
+
+    /**
+     * Who is the other side, and is the mail ours? A no-reply sender with a
+     * person in Reply-To (contact form, booking tool) is that person.
+     *
+     * @return array{0: bool, 1: string}
+     */
+    protected function sides(Mailbox $mailbox, ParsedMessage $parsed, bool $sentFolder): array
+    {
+        $own = $mailbox->ownAddresses();
+        $outgoing = $sentFolder || in_array($parsed->fromEmail, $own, true);
+
+        if ($outgoing) {
+            return [true, $this->recipient($parsed, $own)];
+        }
+
+        $replyTo = BulkDetector::personalReplyTo($parsed->filterHeaders, $own);
+
+        return [false, $replyTo !== null && BulkDetector::isNoReply($parsed->fromEmail) ? $replyTo : $parsed->fromEmail];
+    }
+
+    protected function store(Mailbox $mailbox, string $raw, string $folder, int $uid, bool $sentFolder, bool $reconsidering = false): bool
     {
         $parsed = $this->parser->parse($raw);
         $key = MessageIds::key($parsed->messageId);
 
-        if ($this->known($mailbox, $key)) {
+        if ($this->known($mailbox, $parsed->messageId, $reconsidering)) {
             return false;
         }
 
         $own = $mailbox->ownAddresses();
-        $outgoing = $sentFolder || in_array($parsed->fromEmail, $own, true);
-        $counterpart = $outgoing ? $this->recipient($parsed, $own) : $parsed->fromEmail;
+        [$outgoing, $counterpart] = $this->sides($mailbox, $parsed, $sentFolder);
 
         $skip = $this->skipReason($mailbox, $parsed, $outgoing, $counterpart, $own);
 
         if ($skip !== null) {
-            $this->recordSkip($mailbox, $key, $folder, $uid, $counterpart, $skip);
+            $this->recordSkip($mailbox, $parsed->messageId, $folder, $uid, $counterpart, $skip);
 
             return false;
+        }
+
+        if ($reconsidering) {
+            $this->forgetSkip($mailbox, $parsed->messageId);
         }
 
         $cleaned = $this->html->clean($parsed->html);
@@ -330,10 +388,26 @@ class MailboxFetcher
     }
 
     /** Stored, or deliberately left out: either way not again. */
-    protected function known(Mailbox $mailbox, string $key): bool
+    /** Stored, or deliberately left out: either way not again (unless reconsidering). */
+    protected function known(Mailbox $mailbox, string $messageId, bool $ignoreSkipped = false): bool
     {
-        return Message::query()->where('mailbox_id', $mailbox->id)->where('message_id', $key)->exists()
-            || SkippedMessage::query()->where('mailbox_id', $mailbox->id)->where('message_id', $key)->exists();
+        if (Message::query()->where('mailbox_id', $mailbox->id)->where('message_id', MessageIds::key($messageId))->exists()) {
+            return true;
+        }
+
+        return ! $ignoreSkipped && SkippedMessage::query()
+            ->where('mailbox_id', $mailbox->id)
+            // The hash, and the plain id a record from 0.2.0 still carries.
+            ->whereIn('message_id', array_unique([SkippedMessage::keyFor($messageId), MessageIds::key($messageId)]))
+            ->exists();
+    }
+
+    protected function forgetSkip(Mailbox $mailbox, string $messageId): void
+    {
+        SkippedMessage::query()
+            ->where('mailbox_id', $mailbox->id)
+            ->whereIn('message_id', array_unique([SkippedMessage::keyFor($messageId), MessageIds::key($messageId)]))
+            ->delete();
     }
 
     /**
@@ -366,9 +440,21 @@ class MailboxFetcher
             return 'self';
         }
 
+        if ($outgoing) {
+            return $mailbox->skip_bulk ? $this->bulk->outgoingReason($parsed->filterHeaders, $own) : null;
+        }
+
+        // The exceptions always win, over the blocklist and over bulk mail:
+        // a LeadHub contact, someone this mailbox has written to before, or
+        // a reply in a conversation that exists (a ticket system, an
+        // out-of-office answer).
+        $exception = fn (): bool => $this->contacts->idFor($counterpart) !== null
+            || $this->relevance->knownPartner((int) $mailbox->id, $counterpart)
+            || $this->threader->byHeaders($mailbox, $parsed) !== null;
+
         foreach ($mailbox->blockRules as $rule) {
             if ($rule->matches($counterpart)) {
-                return 'blocked';
+                return $exception() ? null : 'blocked';
             }
         }
 
@@ -376,30 +462,22 @@ class MailboxFetcher
             return null;
         }
 
-        if ($outgoing) {
-            return $this->bulk->outgoingReason($parsed->filterHeaders, $own);
-        }
-
         $reason = $this->bulk->reason($parsed->filterHeaders);
 
-        // The exceptions always win: a contact, or a reply in a conversation
-        // that already exists (a customer writing through a ticket system).
-        if ($reason !== null && ($this->contacts->idFor($counterpart) !== null || $this->threader->byHeaders($mailbox, $parsed) !== null)) {
-            return null;
-        }
-
-        return $reason;
+        return $reason !== null && $exception() ? null : $reason;
     }
 
-    protected function recordSkip(Mailbox $mailbox, string $key, string $folder, int $uid, string $counterpart, string $reason): void
+    protected function recordSkip(Mailbox $mailbox, string $messageId, string $folder, int $uid, string $counterpart, string $reason): void
     {
         try {
             SkippedMessage::query()->create([
                 'mailbox_id' => $mailbox->id,
                 'folder' => MessageIds::fit($folder, 191),
                 'uid' => $uid,
-                'message_id' => $key,
-                'sender' => $counterpart === '' ? null : MessageIds::fit($counterpart),
+                // Only a hash: the record must dedupe, not tell who wrote.
+                'message_id' => SkippedMessage::keyFor($messageId),
+                // Only for hidden senders: removing the rule looks for it.
+                'sender' => $reason === 'blocked' && $counterpart !== '' ? MessageIds::fit($counterpart) : null,
                 'reason' => $reason,
                 'skipped_at' => Carbon::now(),
             ]);

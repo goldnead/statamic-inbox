@@ -51,6 +51,15 @@ interface MailboxClient
      */
     public function uidValidity(string $folder): ?int;
 
+    /**
+     * The folder holding every mail (RFC 6154 `\All`, Gmail's "All Mail"),
+     * or null. Where an archived mail still is.
+     */
+    public function detectAllMailFolder(): ?string;
+
+    /** The UID of the message with this Message-ID in the folder (UID SEARCH), or null. */
+    public function findUid(string $folder, string $messageId): ?int;
+
     /** Log in and list folders; throws with the server's reason when that fails. */
     public function check(): void;
 }

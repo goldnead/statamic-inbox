@@ -37,6 +37,11 @@ Route::prefix('inbox')->name('inbox.')->group(function () {
     Route::post('conversations/{inboxConversation}/block', [ConversationsController::class, 'block'])
         ->whereNumber('inboxConversation')->middleware('can:reply inbox')->name('conversations.block');
 
+    // Removing a hidden sender is the undo of hiding one, so it takes the
+    // same permission (`reply inbox`), not the one for server settings.
+    Route::delete('mailboxes/{inboxMailbox}/rules/{inboxRule}', [MailboxesController::class, 'destroyRule'])
+        ->whereNumber(['inboxMailbox', 'inboxRule'])->middleware('can:reply inbox')->name('mailboxes.rules.destroy');
+
     Route::get('attachments/{inboxAttachment}', [AttachmentsController::class, 'show'])
         ->whereNumber('inboxAttachment')->middleware('can:view inbox')->name('attachments.show');
 
@@ -51,7 +56,5 @@ Route::prefix('inbox')->name('inbox.')->group(function () {
             ->whereNumber('inboxMailbox')->name('mailboxes.update');
         Route::post('mailboxes/{inboxMailbox}/test', [MailboxesController::class, 'test'])
             ->whereNumber('inboxMailbox')->name('mailboxes.test');
-        Route::delete('mailboxes/{inboxMailbox}/rules/{inboxRule}', [MailboxesController::class, 'destroyRule'])
-            ->whereNumber(['inboxMailbox', 'inboxRule'])->name('mailboxes.rules.destroy');
     });
 });

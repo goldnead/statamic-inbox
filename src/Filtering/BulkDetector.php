@@ -50,11 +50,10 @@ class BulkDetector
             return 'bulk_sender_header';
         }
 
-        $local = strtolower(strstr((string) ($headers['from'] ?? ''), '@', true) ?: '');
-        foreach (self::NOREPLY_PREFIXES as $prefix) {
-            if ($local !== '' && str_starts_with($local, $prefix)) {
-                return 'noreply_sender';
-            }
+        // A no-reply sender with a real person in Reply-To (contact form,
+        // booking tool) is that person writing, not a machine.
+        if (self::isNoReply((string) ($headers['from'] ?? '')) && self::personalReplyTo($headers) === null) {
+            return 'noreply_sender';
         }
 
         if (in_array(str_replace(' ', '', (string) ($headers['return_path'] ?? 'x')), ['<>', ''], true)) {
@@ -88,6 +87,39 @@ class BulkDetector
         // everyone in Bcc: a list sent the discreet way.
         if ($to === [] && $cc === [] && ($bcc !== [] || ($headers['undisclosed'] ?? false))) {
             return 'mass_outgoing';
+        }
+
+        return null;
+    }
+
+    public static function isNoReply(string $email): bool
+    {
+        $local = strtolower(strstr($email, '@', true) ?: '');
+
+        foreach (self::NOREPLY_PREFIXES as $prefix) {
+            if ($local !== '' && str_starts_with($local, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The first Reply-To address that is a person, not another no-reply
+     * address and none of ours. That person is the other side of the mail.
+     *
+     * @param  array<string, mixed>  $headers
+     * @param  list<string>  $own
+     */
+    public static function personalReplyTo(array $headers, array $own = []): ?string
+    {
+        foreach ((array) ($headers['reply_to'] ?? []) as $address) {
+            $address = strtolower(trim((string) $address));
+
+            if ($address !== '' && ! self::isNoReply($address) && ! in_array($address, $own, true)) {
+                return $address;
+            }
         }
 
         return null;

@@ -102,6 +102,9 @@ class MessageParser
             'precedence' => $value('Precedence'),
             'auto_submitted' => $value('Auto-Submitted'),
             'from' => strtolower((string) ($this->addresses($message, 'From')[0]['email'] ?? '')),
+            // A contact form or a booking tool sends as noreply@ and puts
+            // the person in Reply-To.
+            'reply_to' => array_column($this->addresses($message, 'Reply-To'), 'email'),
             'recipients' => [
                 'to' => array_column($this->addresses($message, 'To'), 'email'),
                 'cc' => array_column($this->addresses($message, 'Cc'), 'email'),

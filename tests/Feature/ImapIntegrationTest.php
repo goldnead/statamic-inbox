@@ -49,4 +49,15 @@ it('logs in, finds Sent and reads the newest INBOX message', function () {
 
     expect($headers)->toContain('From:')
         ->and(substr_count(rtrim($headers), "\r\n\r\n"))->toBe(0);
+
+    // What --reconsider-skipped does when a UID is gone: search by Message-ID.
+    preg_match('/^Message-ID:\s*<([^>]+)>/mi', $headers, $id);
+    if (($id[1] ?? null) !== null) {
+        expect($client->findUid('INBOX', $id[1]))->toBe(end($uids));
+    }
+
+    $allMail = $client->detectAllMailFolder();
+    if (str_contains((string) env('INBOX_IT_IMAP_HOST'), 'gmail')) {
+        expect($allMail)->toBeString();
+    }
 });

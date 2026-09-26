@@ -176,7 +176,8 @@ const tabsWithErrors = computed(() => errorTabs(errors.value));
 
 const shownKeys = Object.values(TAB_FIELDS).flat();
 const otherErrors = computed(() =>
-    Object.entries(errors.value).filter(([key]) => !shownKeys.includes(key)).map(([, message]) => message),
+    // `signatures.2.name` and `aliases.0` sit at their fields.
+    Object.entries(errors.value).filter(([key]) => !shownKeys.includes(key.split('.')[0])).map(([, message]) => message),
 );
 
 // ── Save ────────────────────────────────────────────────────────────────

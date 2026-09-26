@@ -264,6 +264,7 @@
     "Your own domain cannot be hidden.": "Deine eigene Domain kannst du nicht ausblenden.",
     "Many different people write from :domain. Hide only this sender.": "Von :domain schreiben viele verschiedene Menschen. Blende hier nur den Absender aus.",
     "Automatic mail": "automatisch",
+    "Your website": "Deine Website",
     "Sent by the website, for example a confirmation. It does not count as your reply.": "Von der Website verschickt, zum Beispiel eine Bestätigung. Zählt nicht als deine Antwort.",
     "Signatures": "Signaturen",
     "Signature": "Signatur",

@@ -19,7 +19,11 @@ const props = defineProps({
 defineEmits(['toggle', 'reuse']);
 
 const outgoing = computed(() => props.message.direction === 'out');
-const name = computed(() => (outgoing.value ? __('You') : senderName(props.message)));
+// A mail the website sent through the mailbox was not written by you.
+const name = computed(() => {
+    if (props.message.automatic) return __('Your website');
+    return outgoing.value ? __('You') : senderName(props.message);
+});
 const text = computed(() => splitText(props.message.text, props.message.body_stripped));
 const snippet = computed(() => (props.message.body_stripped || props.message.text || '').replace(/\s+/g, ' ').trim());
 const attachments = computed(() => listedAttachments(props.message));

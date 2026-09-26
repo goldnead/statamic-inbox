@@ -85,6 +85,14 @@ $coaching = Mailbox::create([
     'inbox_folder' => 'INBOX',
     'sent_folder' => 'Sent',
     'import_since' => Carbon::now()->subDays(90),
+    'from_name' => 'Adrian Goldner',
+    // 0.2.2: Anna carries the LeadHub tag "Coaching", so hers is preselected.
+    'signatures' => [
+        ['id' => 'standard', 'name' => 'Standard', 'default' => true, 'tags' => [],
+            'body' => "Liebe Grüße\n{{ sender.name }}\nhttps://adriangoldner.com"],
+        ['id' => 'coaching', 'name' => 'Coaching', 'default' => false, 'tags' => ['Coaching'],
+            'body' => "Bis bald und liebe Grüße\n{{ sender.name }}\nStimmcoaching · {{ mailbox.email }}\nhttps://adriangoldner.com/coaching"],
+    ],
 ]);
 
 $chor = Mailbox::create([
@@ -135,6 +143,19 @@ $client->deliver('INBOX', $raw([
     'From' => 'Anna Beispiel <anna.beispiel@example.com>',
     'To' => 'Adrian Goldner <adrian@goldner.test>',
 ], "Hallo Adrian,\n\ndanke für die Stunde! Ich habe die Übung mit dem Strohhalm jeden Tag gemacht, die Höhe fühlt sich schon leichter an.\nKönnen wir nächste Woche wieder einen Termin machen?\n\nAnna\n\nAm Mo., 21. Sept. 2026 um 10:30 Uhr schrieb Adrian Goldner <adrian@goldner.test>:\n> Hallo Anna,\n>\n> prima, dann Dienstag um 18 Uhr. Den Link schicke ich dir am Vormittag.\n"));
+
+// 0.2.2: the website's booking confirmation in Anna's thread, a system mail.
+$client->deliver('Sent', $raw([
+    'Date' => 'Mon, 21 Sep 2026 10:31:00 +0200',
+    'Message-ID' => '<8c2f41d09a7be3356f0e1d2c4b5a6978@goldner.test>',
+    // Sent is read before INBOX: the thread has to be findable from Sent.
+    'In-Reply-To' => '<adrian-out-002@goldner.test>',
+    'References' => '<adrian-out-001@goldner.test> <adrian-out-002@goldner.test>',
+    'Auto-Submitted' => 'auto-generated',
+    'Subject' => 'Deine Buchung: Einzelstunde am Dienstag, 29.09., 18 Uhr',
+    'From' => 'Adrian Goldner <adrian@goldner.test>',
+    'To' => 'Anna Beispiel <anna.beispiel@example.com>',
+], "Hallo Anna,\n\ndeine Buchung ist bestätigt: Einzelstunde online, Dienstag, 29.09., 18 Uhr.\nDen Zugangslink bekommst du am Vormittag.\n"));
 
 // Newsletter with remote images, photo with PDF.
 $client->deliver('INBOX', $fixture('07-html-tracking.eml'));

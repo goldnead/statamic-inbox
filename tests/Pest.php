@@ -26,6 +26,28 @@ function mailFixture(string $name): string
 }
 
 /**
+ * A mail the website sent from the mailbox's own address (a confirmation,
+ * an invoice), as it lies in Sent.
+ *
+ * @param  array<string, string>  $headers
+ */
+function systemMail(string $messageId, string $subject, array $headers = [], string $to = 'Tina Testkauf <tina.testkauf@example.com>', string $date = 'Wed, 23 Sep 2026 10:00:00 +0200'): string
+{
+    $extra = collect($headers)->map(fn ($value, $name) => "{$name}: {$value}")->implode("\n");
+
+    return trim(implode("\n", array_filter([
+        'MIME-Version: 1.0',
+        "Date: {$date}",
+        "Message-ID: <{$messageId}>",
+        "Subject: {$subject}",
+        'From: Adrian Goldner <adrian@goldner.test>',
+        "To: {$to}",
+        $extra,
+        'Content-Type: text/plain; charset="UTF-8"',
+    ])))."\n\nAutomatisch versendet.\n";
+}
+
+/**
  * A mailbox with the settings a Migadu account would have. Deliberately leaves
  * `append_sent` and `import_since` unset, so every test meets the defaults.
  *

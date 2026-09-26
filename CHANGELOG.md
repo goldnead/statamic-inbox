@@ -2,11 +2,46 @@
 
 ## Unreleased
 
+### Added
+
+- **Signatures.** Several per mailbox, set up in the new "Signaturen" tab of the mailbox form: a
+  name, plain text (line breaks stay, web addresses become links), one of them the default, and
+  optionally LeadHub tags. For a contact with one of those tags that signature is preselected; the
+  first one from the top wins, without a match the default. Placeholders: `{{ sender.name }}` and
+  `{{ mailbox.email }}`. The reply form has a picker with a preview underneath, "Keine" included.
+  The signature goes under the text and above the quote, after `-- ` in the text part.
+- Replies are sent with an HTML part next to the text: everything escaped, links clickable, the
+  quote as a blockquote.
+- With a signature chosen, the AI draft ends without a closing line carrying a name.
+
 ### Changed
 
 - The Migadu and All-Inkl presets send over port 587 with STARTTLS instead of 465. Many hosts block outbound
   465, and the connection test then times out. Sites that published `config/inbox.php` keep their
   own value; existing mailboxes keep their saved port.
+- **Mails the website sends through the mailbox are system mails.** Order and booking
+  confirmations, invoices, access mails in Sent no longer make a conversation relevant, no longer
+  set it to "waiting", and no longer make the recipient a known correspondent. On their own they
+  open no conversation (skip reason `system`); inside one that exists anyway they show folded and
+  marked "automatisch". Recognised by `Auto-Submitted`, `X-Auto-Response-Suppress` or `X-Suite-*`
+  headers, then by a Symfony/Laravel Message-ID on a mail that answers nothing (replies from the
+  inbox and from Gmail never count), then by subject (`inbox.system_mail.subjects`, default
+  "Deine Buchung:", "Deine Bestellung:", "Deine Rechnung", "Dein Zugang").
+- `info+anything@domain` is one of your own addresses when `info@domain` is the mailbox address
+  or an alias: mail to or from it makes no conversation.
+- `inbox:reclassify` applies both to what is stored: conversations made only of system mails or
+  only of mail to your own (plus) addresses are deleted with skip records, system mails in the
+  others are marked. It prints "only system mails" and "marked as automatic".
+
+### Fixed
+
+- A reply sent from the inbox gets its IMAP UID once the fetch meets it in Sent, so
+  `inbox:reclassify` can read its headers later.
+
+### Upgrading
+
+- `php artisan migrate` (adds `inbox_mailboxes.signatures` and `inbox_messages.automatic`), then
+  `php artisan inbox:reclassify --dry-run`, then without `--dry-run`.
 
 ## 0.2.1 — 2026-09-25
 

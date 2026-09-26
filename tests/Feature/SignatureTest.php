@@ -17,6 +17,7 @@ use Goldnead\StatamicInbox\Sending\ReplySender;
 use Goldnead\StatamicInbox\Sending\Signatures;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Symfony\Component\Mime\Email;
 
 beforeEach(function () {
     $this->imap = fakeImap();
@@ -37,7 +38,7 @@ beforeEach(function () {
     $this->conversation = Conversation::sole();
 });
 
-function sentEmail($smtp): Symfony\Component\Mime\Email
+function sentEmail($smtp): Email
 {
     return $smtp->transport->messages()->last()->getOriginalMessage();
 }

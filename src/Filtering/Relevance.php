@@ -13,6 +13,7 @@ use Goldnead\StatamicInbox\Models\Message;
  *  1. the other side is a LeadHub contact;
  *  2. the conversation has an outgoing message (you answered or started it);
  *  3. this mailbox has sent a personal mail to that address before;
+ * where a mail the website sent itself (`automatic`) counts for neither;
  *  4. someone accepted it ("Übernehmen").
  */
 class Relevance
@@ -29,7 +30,7 @@ class Relevance
             return true;
         }
 
-        if (Message::query()->where('conversation_id', $conversation->id)->where('direction', Message::OUT)->exists()) {
+        if (Message::query()->where('conversation_id', $conversation->id)->where('direction', Message::OUT)->where('automatic', false)->exists()) {
             return true;
         }
 
@@ -46,6 +47,8 @@ class Relevance
         return Message::query()
             ->where('inbox_messages.mailbox_id', $mailboxId)
             ->where('direction', Message::OUT)
+            // A confirmation the website sent is no correspondence.
+            ->where('automatic', false)
             ->whereHas('conversation', fn ($q) => $q->where('counterpart_email', strtolower($address)))
             ->exists();
     }

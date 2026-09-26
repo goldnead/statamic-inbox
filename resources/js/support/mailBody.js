@@ -153,7 +153,9 @@ export function listedAttachments(message) {
 export function initiallyExpanded(messages) {
     const ids = new Set();
     const list = messages ?? [];
-    if (list.length) ids.add(list[list.length - 1].id);
+    // The newest one a person wrote; a mail the website sent stays folded.
+    const newest = [...list].reverse().find((m) => !m.automatic) ?? list[list.length - 1];
+    if (newest) ids.add(newest.id);
     list.forEach((m) => {
         if (m.send_error || m.filed_error) ids.add(m.id);
     });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildSrcdoc, initiallyExpanded, listedAttachments, splitText } from '../../resources/js/support/mailBody.js';
 import {
-    applyPreset, detectPreset, fromMailbox, isGmail, passwordRequired, payload, tabsWithErrors, testPayload,
+    applyPreset, detectPreset, fromMailbox, isGmail, makeDefault, moveSignature, newSignature, passwordRequired, payload,
+    removeSignature, tabsWithErrors, testPayload,
 } from '../../resources/js/support/mailboxForm.js';
 import { dismissedSignatures, dismissSignature, isSnoozed, mailboxProblems, statusLabel, TABS } from '../../resources/js/support/status.js';
 import { listTime, snoozePresets } from '../../resources/js/support/format.js';
@@ -75,6 +76,12 @@ describe('message helpers', () => {
 
         expect([...ids].sort()).toEqual([2, 4]);
     });
+
+    it('keeps a mail the website sent folded, even when it is the newest', () => {
+        const ids = initiallyExpanded([{ id: 1 }, { id: 2 }, { id: 3, automatic: true }]);
+
+        expect([...ids]).toEqual([2]);
+    });
 });
 
 describe('mailbox form', () => {
@@ -126,6 +133,33 @@ describe('mailbox form', () => {
         expect(sent.aliases).toEqual(['Kontakt@goldner.test', 'chor@goldner.test']);
         expect(fromMailbox().skip_bulk).toBe(true);
         expect(payload(fromMailbox()).aliases).toEqual([]);
+    });
+
+    it('keeps exactly one default signature, and the order', () => {
+        let list = [newSignature([])];
+        expect(list[0].default).toBe(true);
+
+        list = [...list, newSignature(list), newSignature([...list, {}])];
+        expect(list.map((s) => s.default)).toEqual([true, false, false]);
+
+        list = makeDefault(list, 2);
+        expect(list.map((s) => s.default)).toEqual([false, false, true]);
+
+        list = removeSignature(list, 2);
+        expect(list.map((s) => s.default)).toEqual([true, false]);
+
+        const named = [{ name: 'A' }, { name: 'B' }];
+        expect(moveSignature(named, 1, -1).map((s) => s.name)).toEqual(['B', 'A']);
+        expect(moveSignature(named, 0, -1)).toBe(named);
+    });
+
+    it('sends the signatures with the mailbox', () => {
+        const form = fromMailbox({ ...stored, signatures: [{ id: 'a', name: 'Kurz', body: 'Adrian', default: true, tags: ['Chor'] }] });
+        const sent = payload(form);
+
+        expect(sent.signatures).toEqual([{ id: 'a', name: 'Kurz', body: 'Adrian', default: true, tags: ['Chor'] }]);
+        expect(payload(fromMailbox()).signatures).toEqual([]);
+        expect([...tabsWithErrors({ 'signatures.0.body': 'x' })]).toEqual(['signatures']);
     });
 
     it('knows which tab an error sits on', () => {

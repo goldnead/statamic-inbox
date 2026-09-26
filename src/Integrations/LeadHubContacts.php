@@ -59,6 +59,26 @@ class LeadHubContacts
     }
 
     /**
+     * Every tag name in LeadHub, for the signature rules. Empty without LeadHub.
+     *
+     * @return list<string>
+     */
+    public function tagNames(): array
+    {
+        if (! $this->available()) {
+            return [];
+        }
+
+        try {
+            return collect((self::FACADE)::tags())->pluck('name')->filter()->map(fn ($name) => (string) $name)->unique()->sort()->values()->all();
+        } catch (Throwable $e) {
+            Log::warning('inbox: could not read the LeadHub tags.', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
      * Creates the contact, which only ever happens on a user's click
      * ("Kontakt anlegen"); the fetch never calls this.
      *

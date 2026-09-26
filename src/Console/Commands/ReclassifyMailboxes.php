@@ -9,6 +9,7 @@ use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Filtering\BulkDetector;
 use Goldnead\StatamicInbox\Filtering\ConversationPurger;
 use Goldnead\StatamicInbox\Filtering\Relevance;
+use Goldnead\StatamicInbox\Filtering\SystemMailDetector;
 use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Mailbox;
@@ -27,7 +28,10 @@ use Throwable;
  * Per stored message it takes the stored filter headers, or reads them from
  * the server (headers only, PEEK: nothing is marked read, nothing moves).
  * Then per conversation:
- *  - to yourself: deleted, with skip records;
+ *  - to yourself (a plus address of yours included): deleted, with skip records;
+ *  - only mails the website sent itself (SystemMailDetector): deleted, with
+ *    skip records; such a mail in a conversation that stays is marked
+ *    `automatic`;
  *  - bulk (no answer, no contact, every message bulk): deleted with its
  *    files, with skip records;
  *  - not relevant: status `new`.
@@ -87,6 +91,8 @@ class ReclassifyMailboxes extends Command
             $this->line("  messages checked: {$counts['messages']}, headers read from the server: {$counts['fetched']}");
             $this->line("  bulk conversations: {$counts['bulk']} ({$counts['bulk_messages']} messages)");
             $this->line("  to yourself: {$counts['self']}");
+            $this->line("  only system mails: {$counts['system']}");
+            $this->line("  marked as automatic: {$counts['automatic']}");
             $this->line("  set to new: {$counts['new']}");
             $this->line("  out of new: {$counts['out_of_new']}");
             $this->line("  unchanged: {$counts['unchanged']}");
@@ -107,7 +113,8 @@ class ReclassifyMailboxes extends Command
         LeadHubContacts $contacts,
         ConversationPurger $purger,
     ): array {
-        $counts = array_fill_keys(['messages', 'fetched', 'bulk', 'bulk_messages', 'self', 'new', 'out_of_new', 'unchanged', 'unreadable'], 0);
+        $counts = array_fill_keys(['messages', 'fetched', 'bulk', 'bulk_messages', 'self', 'system', 'automatic', 'new', 'out_of_new', 'unchanged', 'unreadable'], 0);
+        $detector = app(SystemMailDetector::class);
         $own = $mailbox->ownAddresses();
         $client = null;
 
@@ -149,10 +156,38 @@ class ReclassifyMailboxes extends Command
                 $counts['unreadable']++;
             }
 
+            // Which outgoing mails the website sent itself. Decided only when
+            // every header could be read, like everything else here.
+            $system = [];
+            if ($readable) {
+                foreach ($messages as $message) {
+                    $system[$message->id] = $message->direction === Message::OUT && $detector->isSystem(
+                        $headers[$message->id] ?? [],
+                        $message->message_id_full ?? $message->message_id,
+                        (string) $message->subject,
+                        $message->in_reply_to,
+                    );
+
+                    if ($system[$message->id] && ! $message->automatic) {
+                        $counts['automatic']++;
+                    }
+                }
+            }
+
             if ($readable && ! $dry) {
                 foreach ($messages as $message) {
+                    $changes = [];
+
                     if (($headers[$message->id] ?? []) !== [] && $message->filter_headers !== $headers[$message->id]) {
-                        $message->forceFill(['filter_headers' => $headers[$message->id]])->save();
+                        $changes['filter_headers'] = $headers[$message->id];
+                    }
+
+                    if ($message->automatic !== $system[$message->id]) {
+                        $changes['automatic'] = $system[$message->id];
+                    }
+
+                    if ($changes !== []) {
+                        $message->forceFill($changes)->save();
                     }
                 }
             }
@@ -161,9 +196,19 @@ class ReclassifyMailboxes extends Command
 
             // Deleting needs the headers; with some unreadable (an archived
             // mail whose UID is gone) the conversation is never deleted.
-            if ($readable && ($counterpart === '' || in_array($counterpart, $own, true))) {
+            if ($readable && ($counterpart === '' || Mailbox::matchesOwn($counterpart, $own))) {
                 $counts['self']++;
                 $dry || $purger->purge([$conversation], 'self');
+
+                continue;
+            }
+
+            // Only what the website sent, and nobody took it over: deleted
+            // like bulk mail, with skip records.
+            if ($readable && $messages->isNotEmpty() && $conversation->accepted_at === null
+                && $messages->every(fn (Message $m) => $system[$m->id])) {
+                $counts['system']++;
+                $dry || $purger->purge([$conversation], 'system');
 
                 continue;
             }

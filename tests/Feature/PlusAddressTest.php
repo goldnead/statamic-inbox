@@ -6,6 +6,7 @@
  * addresses are never the other side of a conversation.
  */
 
+use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\SkippedMessage;
@@ -32,7 +33,7 @@ it('makes no conversation of a mail from your own plus address either', function
     );
     $this->imap->client($mailbox)->deliver('INBOX', $raw);
 
-    app(\Goldnead\StatamicInbox\Fetching\MailboxFetcher::class)->fetch($mailbox->fresh());
+    app(MailboxFetcher::class)->fetch($mailbox->fresh());
 
     expect(Conversation::count())->toBe(0);
 });
@@ -50,7 +51,7 @@ it('does not take a plus address of someone else for your own', function () {
     $raw = str_replace('To: adrian+nl-test-1@goldner.test', 'To: anna+chor@example.com', mailFixture('26-sent-plus-address.eml'));
     $this->imap->client($mailbox)->deliver('Sent', $raw);
 
-    app(\Goldnead\StatamicInbox\Fetching\MailboxFetcher::class)->fetch($mailbox->fresh());
+    app(MailboxFetcher::class)->fetch($mailbox->fresh());
 
     expect(Conversation::sole()->counterpart_email)->toBe('anna+chor@example.com');
 });

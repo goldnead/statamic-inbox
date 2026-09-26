@@ -8,6 +8,7 @@ use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Events\InboxMessageReceived;
 use Goldnead\StatamicInbox\Filtering\BulkDetector;
 use Goldnead\StatamicInbox\Filtering\Relevance;
+use Goldnead\StatamicInbox\Filtering\SystemMailDetector;
 use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Models\Attachment;
 use Goldnead\StatamicInbox\Models\Conversation;
@@ -63,6 +64,7 @@ class MailboxFetcher
         protected LeadHubContacts $contacts,
         protected BulkDetector $bulk,
         protected Relevance $relevance,
+        protected SystemMailDetector $system,
     ) {}
 
     /** @return int the number of messages stored */
@@ -292,7 +294,7 @@ class MailboxFetcher
     protected function sides(Mailbox $mailbox, ParsedMessage $parsed, bool $sentFolder): array
     {
         $own = $mailbox->ownAddresses();
-        $outgoing = $sentFolder || in_array($parsed->fromEmail, $own, true);
+        $outgoing = $sentFolder || Mailbox::matchesOwn($parsed->fromEmail, $own);
 
         if ($outgoing) {
             return [true, $this->recipient($parsed, $own)];
@@ -307,6 +309,10 @@ class MailboxFetcher
     {
         $parsed = $this->parser->parse($raw);
         $key = MessageIds::key($parsed->messageId);
+
+        if ($sentFolder) {
+            $this->adoptUid($mailbox, $key, $folder, $uid);
+        }
 
         if ($this->known($mailbox, $parsed->messageId, $reconsidering)) {
             return false;
@@ -328,6 +334,7 @@ class MailboxFetcher
         }
 
         $cleaned = $this->html->clean($parsed->html);
+        $automatic = $outgoing && $this->isSystem($parsed);
 
         // A Date header from the future would keep a conversation on top of
         // the list for years; for ordering, nothing is newer than now.
@@ -338,7 +345,7 @@ class MailboxFetcher
         $written = [];
 
         try {
-            $message = DB::transaction(function () use ($mailbox, $parsed, $key, $folder, $uid, $outgoing, $counterpart, $sentAt, $cleaned, &$written) {
+            $message = DB::transaction(function () use ($mailbox, $parsed, $key, $folder, $uid, $outgoing, $automatic, $counterpart, $sentAt, $cleaned, &$written) {
                 $conversation = $this->threader->find($mailbox, $parsed, $counterpart)
                     ?? $this->open($mailbox, $parsed, $counterpart, $sentAt);
 
@@ -346,6 +353,7 @@ class MailboxFetcher
                     'mailbox_id' => $mailbox->id,
                     'conversation_id' => $conversation->id,
                     'direction' => $outgoing ? Message::OUT : Message::IN,
+                    'automatic' => $automatic,
                     'message_id' => $key,
                     'message_id_full' => MessageIds::isHashed($parsed->messageId) ? $parsed->messageId : null,
                     'in_reply_to' => $parsed->inReplyTo === null ? null : MessageIds::key($parsed->inReplyTo),
@@ -388,7 +396,21 @@ class MailboxFetcher
         return true;
     }
 
-    /** Stored, or deliberately left out: either way not again. */
+    /**
+     * A reply sent from the inbox is stored before it has a UID. Met in
+     * Sent, it gets the one it has there, so `inbox:reclassify` can read
+     * its headers later. A UID already stored is left alone.
+     */
+    protected function adoptUid(Mailbox $mailbox, string $key, string $folder, int $uid): void
+    {
+        Message::query()
+            ->where('mailbox_id', $mailbox->id)
+            ->where('message_id', $key)
+            ->where('direction', Message::OUT)
+            ->whereNull('imap_uid')
+            ->update(['imap_uid' => $uid, 'folder' => MessageIds::fit($folder)]);
+    }
+
     /** Stored, or deliberately left out: either way not again (unless reconsidering). */
     protected function known(Mailbox $mailbox, string $messageId, bool $ignoreSkipped = false): bool
     {
@@ -420,7 +442,7 @@ class MailboxFetcher
     protected function recipient(ParsedMessage $parsed, array $own): string
     {
         foreach ([...$parsed->to, ...$parsed->cc, ...$parsed->bcc] as $address) {
-            if (! in_array($address['email'], $own, true)) {
+            if (! Mailbox::matchesOwn($address['email'], $own)) {
                 return $address['email'];
             }
         }
@@ -436,13 +458,22 @@ class MailboxFetcher
      */
     protected function skipReason(Mailbox $mailbox, ParsedMessage $parsed, bool $outgoing, string $counterpart, array $own): ?string
     {
-        // Mail to yourself (or between your own aliases) is no conversation.
-        if ($counterpart === '' || in_array($counterpart, $own, true)) {
+        // Mail to yourself (or between your own aliases and plus addresses)
+        // is no conversation.
+        if ($counterpart === '' || Mailbox::matchesOwn($counterpart, $own)) {
             return 'self';
         }
 
         if ($outgoing) {
-            return $mailbox->skip_bulk ? $this->bulk->outgoingReason($parsed->filterHeaders, $own) : null;
+            $reason = $mailbox->skip_bulk ? $this->bulk->outgoingReason($parsed->filterHeaders, $own) : null;
+
+            // A mail the website sent is kept only inside a conversation
+            // that exists anyway; it never opens one.
+            if ($reason === null && $this->isSystem($parsed) && $this->threader->find($mailbox, $parsed, $counterpart) === null) {
+                return 'system';
+            }
+
+            return $reason;
         }
 
         // The exceptions always win, over the blocklist and over bulk mail:
@@ -466,6 +497,16 @@ class MailboxFetcher
         $reason = $this->bulk->reason($parsed->filterHeaders);
 
         return $reason !== null && $exception() ? null : $reason;
+    }
+
+    protected function isSystem(ParsedMessage $parsed): bool
+    {
+        return $this->system->isSystem(
+            $parsed->filterHeaders,
+            $parsed->messageId,
+            $parsed->subject,
+            $parsed->inReplyTo ?? ($parsed->references[0] ?? null),
+        );
     }
 
     protected function recordSkip(Mailbox $mailbox, string $messageId, string $folder, int $uid, string $counterpart, string $reason): void
@@ -515,6 +556,14 @@ class MailboxFetcher
 
         if ($conversation->contact_id === null) {
             $conversation->contact_id = $this->contacts->idFor($conversation->counterpart_email);
+        }
+
+        // The website's own mail is shown, and changes nothing: not the
+        // status, not the order, not whether it is read.
+        if ($message->automatic) {
+            $conversation->save();
+
+            return;
         }
 
         $relevant = $this->relevance->isRelevant($conversation);

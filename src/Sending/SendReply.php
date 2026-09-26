@@ -23,7 +23,7 @@ use Throwable;
 /**
  * Sends one stored reply over its mailbox's SMTP and files it into Sent.
  *
- * Headers are set on the Symfony message directly: Message-ID (ours, stored
+ * Text and HTML part (ReplySender::html(), escaped). Headers are set on the Symfony message directly: Message-ID (ours, stored
  * before sending), In-Reply-To and References. The brand travels with the
  * job (brand-context's BrandOnQueue); the job also switches to the message's
  * brand itself, so it does not depend on that.
@@ -93,6 +93,8 @@ class SendReply implements ShouldQueue
             ->from(new Address($mailbox->email, $mailbox->senderName()))
             ->subject($message->subject)
             ->text((string) $message->text)
+            // Since 0.2.2 also as HTML, so a signature's links are links.
+            ->html(ReplySender::html((string) $message->text))
             ->date($message->sent_at ?? Carbon::now());
 
         foreach ((array) $message->to as $recipient) {

@@ -2,6 +2,8 @@
 
 namespace Goldnead\StatamicInbox\Filtering;
 
+use Goldnead\StatamicInbox\Models\Mailbox;
+
 /**
  * Is this bulk mail? Decided on the stored filter headers alone (see
  * MessageParser::filterHeaders()), so the same answer comes out at fetch
@@ -73,7 +75,10 @@ class BulkDetector
     public function outgoingReason(array $headers, array $own): ?string
     {
         $recipients = (array) ($headers['recipients'] ?? []);
-        $others = fn (array $list) => array_values(array_diff(array_map('strtolower', $list), $own));
+        $others = fn (array $list) => array_values(array_filter(
+            array_map('strtolower', $list),
+            fn (string $address) => ! Mailbox::matchesOwn($address, $own)
+        ));
 
         $to = $others((array) ($recipients['to'] ?? []));
         $cc = $others((array) ($recipients['cc'] ?? []));
@@ -117,7 +122,7 @@ class BulkDetector
         foreach ((array) ($headers['reply_to'] ?? []) as $address) {
             $address = strtolower(trim((string) $address));
 
-            if ($address !== '' && ! self::isNoReply($address) && ! in_array($address, $own, true)) {
+            if ($address !== '' && ! self::isNoReply($address) && ! Mailbox::matchesOwn($address, $own)) {
                 return $address;
             }
         }

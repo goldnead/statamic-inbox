@@ -4,6 +4,7 @@ namespace Goldnead\StatamicInbox\Http\Controllers\Cp;
 
 use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Contracts\TransportFactory;
+use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Models\BlockRule;
 use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\SkippedMessage;
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -136,6 +138,8 @@ class MailboxesController extends Controller
             'storeUrl' => cp_route('inbox.mailboxes.store'),
             'updateUrl' => $mailbox ? cp_route('inbox.mailboxes.update', $mailbox->id) : null,
             'testUrl' => $mailbox ? cp_route('inbox.mailboxes.test', $mailbox->id) : cp_route('inbox.mailboxes.test-new'),
+            // For the signature rules; null when LeadHub is not installed.
+            'leadhubTags' => app(LeadHubContacts::class)->available() ? app(LeadHubContacts::class)->tagNames() : null,
         ];
     }
 
@@ -371,7 +375,19 @@ class MailboxesController extends Controller
             'skip_bulk' => ['nullable', 'boolean'],
             'aliases' => ['nullable', 'array', 'max:20'],
             'aliases.*' => ['email', 'max:255'],
+            // In the order the tag rules are checked.
+            'signatures' => ['nullable', 'array', 'max:20'],
+            'signatures.*.id' => ['nullable', 'string', 'max:64', 'alpha_dash'],
+            'signatures.*.name' => ['required', 'string', 'max:100'],
+            'signatures.*.body' => ['required', 'string', 'max:5000'],
+            'signatures.*.default' => ['nullable', 'boolean'],
+            'signatures.*.tags' => ['nullable', 'array', 'max:50'],
+            'signatures.*.tags.*' => ['string', 'max:255'],
         ]);
+
+        if (array_key_exists('signatures', $data)) {
+            $data['signatures'] = $this->signatures((array) ($data['signatures'] ?? []));
+        }
 
         foreach (['inbox_folder', 'append_sent', 'import_since', 'active', 'sent_folder', 'skip_bulk'] as $optional) {
             if (! array_key_exists($optional, $data) || $data[$optional] === null) {
@@ -388,6 +404,40 @@ class MailboxesController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * Signatures as stored: each with an id, exactly one default (the first
+     * marked, else the first of all), tags without blanks or doubles.
+     *
+     * @param  array<int, array<string, mixed>>  $input
+     * @return list<array{id: string, name: string, body: string, default: bool, tags: list<string>}>|null
+     */
+    protected function signatures(array $input): ?array
+    {
+        if ($input === []) {
+            return null;
+        }
+
+        $default = collect($input)->search(fn ($s) => (bool) ($s['default'] ?? false));
+        $default = $default === false ? 0 : $default;
+        $seen = [];
+
+        return collect(array_values($input))->map(function (array $s, int $index) use ($default, &$seen) {
+            $id = trim((string) ($s['id'] ?? ''));
+            if ($id === '' || in_array($id, $seen, true)) {
+                $id = (string) Str::uuid();
+            }
+            $seen[] = $id;
+
+            return [
+                'id' => $id,
+                'name' => trim((string) $s['name']),
+                'body' => str_replace(["\r\n", "\r"], "\n", trim((string) $s['body'])),
+                'default' => $index === $default,
+                'tags' => array_values(array_unique(array_filter(array_map(fn ($t) => trim((string) $t), (array) ($s['tags'] ?? []))))),
+            ];
+        })->all();
     }
 
     protected function hostRule(): \Closure
@@ -409,6 +459,7 @@ class MailboxesController extends Controller
             'import_since' => $mailbox->import_since?->toDateString(),
             'skip_bulk' => (bool) ($mailbox->skip_bulk ?? true),
             'aliases' => array_values((array) ($mailbox->aliases ?? [])),
+            'signatures' => $mailbox->signatureList(),
             // What went wrong, in words and with the fix (ErrorExplainer).
             'problem' => app(ErrorExplainer::class)->explain($mailbox->last_error, ErrorExplainer::FETCH, $mailbox),
             'has_password' => (string) $mailbox->getRawOriginal('password') !== '',

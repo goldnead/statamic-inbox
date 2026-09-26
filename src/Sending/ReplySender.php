@@ -27,16 +27,17 @@ use Illuminate\Support\Str;
  */
 class ReplySender
 {
-    public function __construct(protected SuppressionCheck $suppression) {}
+    public function __construct(protected SuppressionCheck $suppression, protected Signatures $signatures) {}
 
     /**
      * @param  list<UploadedFile>  $attachments
+     * @param  string|null  $signature  a signature id, Signatures::NONE, or null for the one the form would preselect
      *
      * @throws ReplyRefused
      */
-    public function send(Conversation $conversation, string $text, array $attachments = []): Message
+    public function send(Conversation $conversation, string $text, array $attachments = [], ?string $signature = null): Message
     {
-        return BrandContext::runFor((int) $conversation->brand_id, function () use ($conversation, $text, $attachments) {
+        return BrandContext::runFor((int) $conversation->brand_id, function () use ($conversation, $text, $attachments, $signature) {
             $recipient = strtolower(trim($conversation->counterpart_email));
 
             if ($recipient === '') {
@@ -46,7 +47,7 @@ class ReplySender
             $this->suppression->assertMayReply($recipient);
 
             // One unit: an attachment the disk refuses leaves no reply behind.
-            $message = DB::transaction(fn () => $this->store($conversation, $recipient, $text, $attachments));
+            $message = DB::transaction(fn () => $this->store($conversation, $recipient, $text, $attachments, $signature));
 
             SendReply::dispatch($message->id)->onQueue((string) config('inbox.queue', 'default'));
 
@@ -55,7 +56,7 @@ class ReplySender
     }
 
     /** @param  list<UploadedFile>  $attachments */
-    protected function store(Conversation $conversation, string $recipient, string $text, array $attachments): Message
+    protected function store(Conversation $conversation, string $recipient, string $text, array $attachments, ?string $signature): Message
     {
         $mailbox = $conversation->mailbox;
         $history = $conversation->messages()->get();
@@ -73,6 +74,12 @@ class ReplySender
         $text = str_replace(["\r\n", "\r"], "\n", trim($text));
         $now = Carbon::now();
 
+        // Under the text, above the quote; "-- " is the separator mail
+        // programs know.
+        $chosen = $this->signatures->resolve($mailbox, $conversation, $signature);
+        $signed = $chosen === null ? '' : trim($this->signatures->render($chosen, $mailbox));
+        $body = $signed === '' ? $text : $text."\n\n-- \n".$signed;
+
         $message = Message::create([
             'mailbox_id' => $mailbox->id,
             'conversation_id' => $conversation->id,
@@ -85,8 +92,8 @@ class ReplySender
             'to' => [['email' => $recipient, 'name' => null]],
             'cc' => [],
             'subject' => MessageIds::fit(Subject::reply($conversation->subject !== '' ? $conversation->subject : (string) $parent?->subject)),
-            'text' => $this->withQuote($text, $parent),
-            'body_stripped' => $text,
+            'text' => $this->withQuote($body, $parent),
+            'body_stripped' => $body,
             'sent_at' => $now,
             'folder' => $mailbox->sent_folder,
         ]);
@@ -123,6 +130,45 @@ class ReplySender
         return $text."\n\n".QuoteStripper::MARKER."\n\n"
             .__('On :date, :who wrote:', ['date' => (string) $when, 'who' => $who])."\n"
             .$quoted;
+    }
+
+    /**
+     * The HTML part of a reply, made from its text part: everything escaped,
+     * line breaks kept, http(s) links clickable, the quote under our marker
+     * as a blockquote. No markup from what was typed (the signature
+     * included) reaches the mail.
+     */
+    public static function html(string $text): string
+    {
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+        $markerAt = strpos($text, QuoteStripper::MARKER);
+
+        $body = $markerAt === false ? $text : rtrim(substr($text, 0, $markerAt));
+        $html = '<div>'.Signatures::html($body).'</div>';
+
+        if ($markerAt === false) {
+            return $html;
+        }
+
+        $html .= "\n<p>".Signatures::html(QuoteStripper::MARKER).'</p>';
+        $intro = [];
+        $quoted = [];
+
+        foreach (explode("\n", trim(substr($text, $markerAt + strlen(QuoteStripper::MARKER)))) as $line) {
+            if (str_starts_with($line, '>')) {
+                $quoted[] = (string) preg_replace('/^> ?/', '', $line);
+            } elseif ($quoted === []) {
+                $intro[] = $line;
+            } else {
+                $quoted[] = $line;
+            }
+        }
+
+        if (trim(implode("\n", $intro)) !== '') {
+            $html .= "\n<div>".Signatures::html(trim(implode("\n", $intro))).'</div>';
+        }
+
+        return $html."\n<blockquote type=\"cite\">".Signatures::html(implode("\n", $quoted)).'</blockquote>';
     }
 
     /** @param  list<UploadedFile>  $files */

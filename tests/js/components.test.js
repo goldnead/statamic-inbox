@@ -108,6 +108,44 @@ describe('ReplyComposer', () => {
 
         expect(wrapper.find('[data-inbox-composer-problem]').text()).toContain('The AI access is not set up or has expired');
     });
+
+    const signatures = [
+        { id: 'std', name: 'Standard', preview: 'Liebe Grüße\nAdrian' },
+        { id: 'chor', name: 'Chor', preview: 'Herzlich, Adrian' },
+    ];
+
+    it('shows the preselected signature with its preview, and sends the one picked', async () => {
+        const wrapper = mount(ReplyComposer, { props: { recipient: 'a@b.test', urls, ai: true, signatures, signature: 'chor' } });
+
+        expect(wrapper.find('[data-inbox-signature-preview]').text()).toBe('Herzlich, Adrian');
+
+        wrapper.vm.$.setupState.signatureId = 'none';
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-inbox-signature-preview]').exists()).toBe(false);
+
+        axios.post.mockResolvedValueOnce({ data: { text: 'Hallo' } });
+        wrapper.vm.$.setupState.mode = 'ai';
+        await wrapper.vm.$nextTick();
+        await wrapper.find('[data-inbox-suggest]').trigger('click');
+        await flushPromises();
+        expect(axios.post).toHaveBeenLastCalledWith('/draft', { instruction: null, signature: false });
+
+        wrapper.vm.$.setupState.signatureId = 'std';
+        axios.post.mockResolvedValueOnce({ data: {} });
+        await wrapper.find('[data-inbox-send]').trigger('click');
+        await flushPromises();
+
+        const body = axios.post.mock.calls.at(-1)[1];
+        expect(body.get('signature')).toBe('std');
+        // Back to the preselected one for the next reply.
+        expect(wrapper.vm.$.setupState.signatureId).toBe('chor');
+    });
+
+    it('shows no signature field when the mailbox has none', () => {
+        const wrapper = mount(ReplyComposer, { props: { recipient: 'a@b.test', urls } });
+
+        expect(wrapper.find('[data-inbox-signature-field]').exists()).toBe(false);
+    });
 });
 
 describe('MessageFrame', () => {
@@ -152,6 +190,35 @@ describe('Mailboxes/Edit', () => {
         expect(wrapper.find('[data-inbox-test-half="smtp"]').text()).toContain('Sending (SMTP): The connection failed');
         expect(wrapper.find('[data-inbox-test-half="smtp"]').text()).toContain('Receiving (IMAP) works.');
         expect(wrapper.find('[data-inbox-test-half="imap"]').exists()).toBe(false);
+    });
+
+    it('adds, orders and saves signatures with the mailbox', async () => {
+        const withSignature = { ...mailbox, signatures: [{ id: 'a', name: 'Standard', body: 'Adrian', default: true, tags: [] }] };
+        axios.patch.mockResolvedValueOnce({ data: { mailbox: { ...withSignature, signatures: [...withSignature.signatures, { id: 'b', name: 'Chor', body: 'A.', default: false, tags: ['Chor'] }] } } });
+        const wrapper = mount(MailboxEdit, { props: { ...props, mailbox: withSignature, leadhubTags: ['Chor'] } });
+
+        expect(wrapper.findAll('[data-inbox-signature]')).toHaveLength(1);
+        await wrapper.find('[data-inbox-signature-add]').trigger('click');
+        expect(wrapper.findAll('[data-inbox-signature]')).toHaveLength(2);
+
+        const form = wrapper.vm.$.setupState.form;
+        form.signatures[1].name = 'Chor';
+        form.signatures[1].body = 'A.';
+        form.signatures[1].tags = ['Chor'];
+        await wrapper.find('[data-inbox-save]').trigger('click');
+        await flushPromises();
+
+        const sent = axios.patch.mock.calls[0][1].signatures;
+        expect(sent.map((s) => [s.id, s.name, s.default])).toEqual([['a', 'Standard', true], [null, 'Chor', false]]);
+        // The new one has its id from the server now.
+        expect(wrapper.vm.$.setupState.form.signatures[1].id).toBe('b');
+    });
+
+    it('hides the tag rules without LeadHub', () => {
+        const wrapper = mount(MailboxEdit, { props: { ...props, mailbox: { ...mailbox, signatures: [{ id: 'a', name: 'S', body: 'A', default: true, tags: [] }] } } });
+
+        expect(wrapper.find('[data-inbox-signature-tags]').exists()).toBe(false);
+        expect(wrapper.find('[data-inbox-signatures-empty]').exists()).toBe(false);
     });
 
     it('points at the password field on the page instead of linking to it', () => {

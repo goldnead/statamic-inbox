@@ -93,6 +93,24 @@ return [
         'freemail_domains' => [],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | System mail
+    |--------------------------------------------------------------------------
+    |
+    | Mails the website sends itself through this mailbox (confirmations,
+    | invoices, access mails) land in Sent next to your own. They never make a
+    | conversation relevant (see Filtering\SystemMailDetector). `subjects` is
+    | the last resort: a mail whose subject starts with one of these counts as
+    | a system mail. `headers` adds header names of your own that mark one.
+    |
+    */
+
+    'system_mail' => [
+        'subjects' => ['Deine Buchung:', 'Deine Bestellung:', 'Deine Rechnung', 'Dein Zugang'],
+        'headers' => [],
+    ],
+
     'queue' => env('INBOX_QUEUE', 'default'),
 
     /*

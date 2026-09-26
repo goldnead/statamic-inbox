@@ -34,7 +34,42 @@ export function fromMailbox(mailbox = {}) {
         skip_bulk: mailbox.skip_bulk ?? true,
         // One per line in the form, a list for the API.
         aliases: (mailbox.aliases ?? []).join('\n'),
+        signatures: (mailbox.signatures ?? []).map((s) => ({
+            id: s.id ?? null,
+            name: s.name ?? '',
+            body: s.body ?? '',
+            default: Boolean(s.default),
+            tags: [...(s.tags ?? [])],
+        })),
     };
+}
+
+/** A new, empty signature; the first one a mailbox gets is its default. */
+export function newSignature(existing = []) {
+    return { id: null, name: '', body: '', default: existing.length === 0, tags: [] };
+}
+
+/** Exactly one default: the one picked, all others off. */
+export function makeDefault(signatures, index) {
+    return signatures.map((s, i) => ({ ...s, default: i === index }));
+}
+
+/** Removed; if it was the default, the first remaining one takes over. */
+export function removeSignature(signatures, index) {
+    const rest = signatures.filter((_, i) => i !== index);
+    if (rest.length && !rest.some((s) => s.default)) rest[0] = { ...rest[0], default: true };
+
+    return rest;
+}
+
+/** One place up or down; the order decides which tag rule wins. */
+export function moveSignature(signatures, index, delta) {
+    const target = index + delta;
+    if (target < 0 || target >= signatures.length) return signatures;
+    const next = [...signatures];
+    [next[index], next[target]] = [next[target], next[index]];
+
+    return next;
 }
 
 /** The aliases field, one address per line (commas work too), as a list. */
@@ -119,6 +154,13 @@ export function payload(form) {
         active: Boolean(form.active),
         skip_bulk: form.skip_bulk === undefined ? true : Boolean(form.skip_bulk),
         aliases: aliasList(form.aliases),
+        signatures: (form.signatures ?? []).map((s) => ({
+            id: s.id || null,
+            name: s.name,
+            body: s.body,
+            default: Boolean(s.default),
+            tags: s.tags ?? [],
+        })),
     };
 }
 
@@ -146,6 +188,7 @@ export const TAB_FIELDS = {
     servers: ['imap_host', 'imap_port', 'imap_encryption', 'smtp_host', 'smtp_port', 'smtp_encryption'],
     folders: ['inbox_folder', 'sent_folder', 'append_sent', 'import_since', 'active'],
     filter: ['skip_bulk', 'aliases'],
+    signatures: ['signatures'],
 };
 
 export function tabsWithErrors(errors) {

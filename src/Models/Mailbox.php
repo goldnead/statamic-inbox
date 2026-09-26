@@ -32,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property bool $append_sent
  * @property bool $skip_bulk
  * @property list<string>|null $aliases
+ * @property list<array<string, mixed>>|null $signatures
  * @property int $last_uid_inbox
  * @property int $last_uid_sent
  * @property Carbon|null $last_fetched_at
@@ -74,6 +75,7 @@ class Mailbox extends Model
             'append_sent' => 'boolean',
             'skip_bulk' => 'boolean',
             'aliases' => 'array',
+            'signatures' => 'array',
             'last_uid_inbox' => 'integer',
             'last_uid_sent' => 'integer',
             'uidvalidity_inbox' => 'integer',
@@ -156,6 +158,54 @@ class Mailbox extends Model
             fn ($address) => strtolower(trim((string) $address)),
             [$this->email, ...(array) ($this->aliases ?? [])]
         ))));
+    }
+
+    /**
+     * One of this mailbox's addresses, a plus address of one included:
+     * `info+nl-test@domain` is ours when `info@domain` is.
+     */
+    public function isOwnAddress(string $address): bool
+    {
+        return static::matchesOwn($address, $this->ownAddresses());
+    }
+
+    /**
+     * @param  list<string>  $own  lower case, as ownAddresses() returns them
+     */
+    public static function matchesOwn(string $address, array $own): bool
+    {
+        $address = strtolower(trim($address));
+
+        if ($address === '') {
+            return false;
+        }
+
+        if (in_array($address, $own, true)) {
+            return true;
+        }
+
+        $at = strrpos($address, '@');
+        $plus = strpos($address, '+');
+
+        if ($at === false || $plus === false || $plus > $at) {
+            return false;
+        }
+
+        return in_array(substr($address, 0, $plus).substr($address, $at), $own, true);
+    }
+
+    /**
+     * The signatures replies can carry, in the order the tag rules are
+     * checked: [id, name, body, default, tags].
+     *
+     * @return list<array{id: string, name: string, body: string, default: bool, tags: list<string>}>
+     */
+    public function signatureList(): array
+    {
+        return array_values(array_filter(
+            (array) ($this->signatures ?? []),
+            fn ($signature) => is_array($signature) && ($signature['id'] ?? '') !== ''
+        ));
     }
 
     /** @return HasMany<BlockRule, $this> */

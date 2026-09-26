@@ -20,6 +20,7 @@ import {
     Badge,
     Button,
     Card,
+    Combobox,
     CommandPaletteItem,
     ConfirmationModal,
     DatePicker,
@@ -45,7 +46,11 @@ import {
     detectPreset,
     fromMailbox,
     isGmail,
+    makeDefault,
+    moveSignature,
+    newSignature,
     passwordRequired,
+    removeSignature,
     payload,
     TAB_FIELDS,
     tabsWithErrors as errorTabs,
@@ -64,7 +69,23 @@ const props = defineProps({
     // The filter: bulk mail left out in the last 30 days, hidden senders.
     skippedBulk: { type: Number, default: 0 },
     rules: { type: Array, default: () => [] },
+    // LeadHub's tag names for the signature rules; null without LeadHub.
+    leadhubTags: { type: Array, default: null },
 });
+
+// ── Signatures ──────────────────────────────────────────────────────────
+const tagOptions = computed(() => {
+    const names = new Set([...(props.leadhubTags ?? []), ...form.value.signatures.flatMap((s) => s.tags)]);
+    return [...names].map((name) => ({ value: name, label: name }));
+});
+
+function addSignature() {
+    form.value.signatures = [...form.value.signatures, newSignature(form.value.signatures)];
+}
+
+function signatureError(index, field) {
+    return errors.value[`signatures.${index}.${field}`];
+}
 
 // ── Filter: hidden senders and domains ──────────────────────────────────
 const blockRules = ref([...props.rules]);
@@ -175,7 +196,8 @@ async function save() {
 
         const { data } = await axios.patch(props.updateUrl, payload(form.value));
         stored.value = data.mailbox;
-        form.value = { ...form.value, password: '', sent_folder: data.mailbox.sent_folder ?? '' };
+        // New signatures come back with their ids.
+        form.value = { ...form.value, password: '', sent_folder: data.mailbox.sent_folder ?? '', signatures: fromMailbox(data.mailbox).signatures };
         errors.value = {};
         markClean();
         globalThis.Statamic?.$toast?.success?.(__('Saved'));
@@ -352,6 +374,10 @@ function onThisPage(problem) {
                 <TabTrigger name="filter" data-inbox-tab-filter>
                     {{ __('Filter') }}
                     <Badge v-if="tabsWithErrors.has('filter')" color="red" pill class="ms-1.5" text="!" :aria-label="__('This tab has errors')" />
+                </TabTrigger>
+                <TabTrigger name="signatures" data-inbox-tab-signatures>
+                    {{ __('Signatures') }}
+                    <Badge v-if="tabsWithErrors.has('signatures')" color="red" pill class="ms-1.5" text="!" :aria-label="__('This tab has errors')" />
                 </TabTrigger>
             </TabList>
 
@@ -561,6 +587,104 @@ function onThisPage(problem) {
                         </ul>
                     </Card>
                 </Panel>
+            </TabContent>
+            <TabContent name="signatures">
+                <Description
+                    class="mt-4"
+                    :text="leadhubTags === null
+                        ? __('A signature is added under your reply. The default is preselected; in the reply form you can pick another one or none.')
+                        : __('A signature is added under your reply. The default is preselected. If a signature names tags, it is preselected for contacts with one of those tags; the first signature from the top that fits wins.')"
+                />
+
+                <Panel v-if="!form.signatures.length" class="mt-4" data-inbox-signatures-empty>
+                    <Card>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('No signature yet. Replies go out without one.') }}</p>
+                    </Card>
+                </Panel>
+
+                <Panel
+                    v-for="(signature, index) in form.signatures"
+                    :key="signature.id ?? `new-${index}`"
+                    class="mt-4"
+                    :heading="signature.name || __('New signature')"
+                    :data-inbox-signature="index"
+                >
+                    <template #header-actions>
+                        <div class="flex items-center gap-1">
+                            <Badge v-if="signature.default" pill color="green" :text="__('Default')" data-inbox-signature-default />
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                icon="arrow-up"
+                                icon-only
+                                :disabled="index === 0"
+                                :aria-label="__('Move up')"
+                                @click="form.signatures = moveSignature(form.signatures, index, -1)"
+                            />
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                icon="arrow-down"
+                                icon-only
+                                :disabled="index === form.signatures.length - 1"
+                                :aria-label="__('Move down')"
+                                @click="form.signatures = moveSignature(form.signatures, index, 1)"
+                            />
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                icon="trash"
+                                icon-only
+                                :aria-label="__('Remove')"
+                                @click="form.signatures = removeSignature(form.signatures, index)"
+                            />
+                        </div>
+                    </template>
+                    <Card class="space-y-6">
+                        <Field :id="`signature-${index}-name`" :label="__('Name')" required :error="signatureError(index, 'name')"
+                            :instructions="__('Only for you, in the reply form. E.g. Coaching or Choir.')">
+                            <Input :id="`signature-${index}-name`" v-model="signature.name" data-inbox-signature-name />
+                        </Field>
+
+                        <Field :id="`signature-${index}-body`" :label="__('Text')" required :error="signatureError(index, 'body')"
+                            :instructions="__('Plain text; line breaks stay, web addresses become links. {{ sender.name }} is replaced by the sender name, {{ mailbox.email }} by the address of this mailbox.')">
+                            <Textarea :id="`signature-${index}-body`" v-model="signature.body" :rows="4" data-inbox-signature-body />
+                        </Field>
+
+                        <div class="grid sm:grid-cols-2 gap-6 *:min-w-0">
+                            <Field :id="`signature-${index}-default`" :label="__('Default')"
+                                :instructions="__('Preselected when no tag fits.')">
+                                <Switch
+                                    :id="`signature-${index}-default`"
+                                    :model-value="signature.default"
+                                    :disabled="signature.default"
+                                    @update:model-value="$event && (form.signatures = makeDefault(form.signatures, index))"
+                                />
+                            </Field>
+
+                            <Field
+                                v-if="leadhubTags !== null"
+                                :id="`signature-${index}-tags`"
+                                :label="__('For contacts with these tags')"
+                                :instructions="__('Empty: only as default or picked by hand.')"
+                            >
+                                <Combobox
+                                    :id="`signature-${index}-tags`"
+                                    v-model="signature.tags"
+                                    :options="tagOptions"
+                                    multiple
+                                    searchable
+                                    :placeholder="tagOptions.length ? __('Choose tags') : __('No tags in LeadHub yet')"
+                                    data-inbox-signature-tags
+                                />
+                            </Field>
+                        </div>
+                    </Card>
+                </Panel>
+
+                <div class="mt-4">
+                    <Button icon="plus" :text="__('Add signature')" data-inbox-signature-add @click="addSignature" />
+                </div>
             </TabContent>
         </Tabs>
 

@@ -33,7 +33,8 @@ class ConversationPurger
                 $messages = Message::query()->where('conversation_id', $conversation->id)->get();
 
                 foreach ($messages as $message) {
-                    $why = is_callable($reason) ? $reason($message) : $reason;
+                    // Never is_callable(): the reason "system" names a PHP function.
+                    $why = is_string($reason) ? $reason : $reason($message);
 
                     SkippedMessage::query()->firstOrCreate(
                         [

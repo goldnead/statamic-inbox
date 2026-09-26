@@ -44,6 +44,8 @@ const props = defineProps({
     leadhub: { type: Boolean, default: false },
     templates: { type: Array, default: () => [] },
     ai: { type: Boolean, default: false },
+    signatures: { type: Array, default: () => [] },
+    signature: { type: String, default: null },
     canHideDomain: { type: Boolean, default: true },
     canReply: { type: Boolean, default: false },
     urls: { type: Object, required: true },
@@ -289,6 +291,8 @@ function reloadThread() {
                     :urls="urls"
                     :templates="templates"
                     :ai="ai"
+                    :signatures="signatures"
+                    :signature="signature"
                     @sent="reloadThread"
                     @failed="reloadThread"
                 />

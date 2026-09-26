@@ -16,6 +16,7 @@ use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Sending\ReplySender;
 use Goldnead\StatamicInbox\Sending\SendFailed;
+use Goldnead\StatamicInbox\Sending\Signatures;
 use Goldnead\StatamicInbox\Support\ErrorExplainer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Statamic\CP\Column;
@@ -246,7 +248,7 @@ class ConversationsController extends Controller
         return Str::limit(trim((string) preg_replace('/\s+/u', ' ', $text)), 140);
     }
 
-    public function show(int $inboxConversation, LeadHubContacts $contacts, EmailTemplateFiller $templates, ErrorExplainer $explainer): Response
+    public function show(int $inboxConversation, LeadHubContacts $contacts, EmailTemplateFiller $templates, ErrorExplainer $explainer, Signatures $signatures): Response
     {
         Gate::authorize('view inbox');
 
@@ -281,7 +283,7 @@ class ConversationsController extends Controller
 
                 return [
                     ...$m->only([
-                        'id', 'direction', 'from_email', 'from_name', 'to', 'cc', 'subject', 'text',
+                        'id', 'direction', 'automatic', 'from_email', 'from_name', 'to', 'cc', 'subject', 'text',
                         'html_sanitized', 'body_stripped', 'has_remote_images', 'send_error', 'filed_error',
                     ]),
                     'sent_at' => $m->sent_at?->toIso8601String(),
@@ -296,6 +298,15 @@ class ConversationsController extends Controller
                 ];
             })->all(),
             'contact' => $contact,
+            // The reply form's picker: each with its preview, placeholders
+            // filled, and the one a tag rule or the default preselects.
+            'signatures' => $conversation->mailbox === null ? [] : collect($conversation->mailbox->signatureList())
+                ->map(fn (array $s) => [
+                    'id' => $s['id'],
+                    'name' => (string) ($s['name'] ?? ''),
+                    'preview' => $signatures->render($s, $conversation->mailbox),
+                ])->all(),
+            'signature' => $conversation->mailbox === null ? null : ($signatures->suggest($conversation->mailbox, $conversation)['id'] ?? null),
             'leadhub' => $contacts->available(),
             'templates' => $templates->options(),
             'ai' => (string) config('inbox.ai.api_key') !== '',
@@ -432,7 +443,7 @@ class ConversationsController extends Controller
             ->where('status', Conversation::STATUS_NEW)
             ->whereNull('contact_id')
             ->whereNull('accepted_at')
-            ->whereDoesntHave('messages', fn ($q) => $q->where('direction', Message::OUT))
+            ->whereDoesntHave('messages', fn ($q) => $q->where('direction', Message::OUT)->where('automatic', false))
             ->get()
             ->filter(fn (Conversation $c) => $contacts->idFor($c->counterpart_email) === null)
             ->values();
@@ -456,16 +467,20 @@ class ConversationsController extends Controller
     {
         Gate::authorize('reply inbox');
 
-        $conversation = Conversation::query()->findOrFail($inboxConversation);
+        $conversation = Conversation::query()->with('mailbox')->findOrFail($inboxConversation);
+        $signatureIds = collect($conversation->mailbox?->signatureList() ?? [])->pluck('id')->all();
 
         $data = $request->validate([
             'text' => ['required', 'string', 'max:100000'],
             'attachments' => ['sometimes', 'array', 'max:10'],
             'attachments.*' => ['file', 'max:20480'],
+            // An id of this mailbox's signatures, or "none". Left out, the
+            // one the form would preselect.
+            'signature' => ['sometimes', 'nullable', 'string', Rule::in([Signatures::NONE, ...$signatureIds])],
         ]);
 
         try {
-            $message = $sender->send($conversation, $data['text'], array_values($request->file('attachments', [])));
+            $message = $sender->send($conversation, $data['text'], array_values($request->file('attachments', [])), $data['signature'] ?? null);
         } catch (ReplyRefused $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (SendFailed $e) {
@@ -483,10 +498,14 @@ class ConversationsController extends Controller
         Gate::authorize('reply inbox');
 
         $conversation = Conversation::query()->findOrFail($inboxConversation);
-        $instruction = $request->validate(['instruction' => ['nullable', 'string', 'max:1000']])['instruction'] ?? null;
+        $input = $request->validate([
+            'instruction' => ['nullable', 'string', 'max:1000'],
+            // A signature is chosen in the form: no sign-off with a name.
+            'signature' => ['sometimes', 'boolean'],
+        ]);
 
         try {
-            return response()->json(['text' => $suggester->suggest($conversation, $instruction)]);
+            return response()->json(['text' => $suggester->suggest($conversation, $input['instruction'] ?? null, (bool) ($input['signature'] ?? false))]);
         } catch (DraftUnavailable $e) {
             $explained = $explainer->explainAi($e->getMessage(), $e->status);
 

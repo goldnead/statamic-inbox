@@ -81,7 +81,7 @@ it('puts the explanation on a failed send and on the stored message', function (
     {
         public function __construct() {}
 
-        public function send(Conversation $conversation, string $text, array $attachments = []): Message
+        public function send(Conversation $conversation, string $text, array $attachments = [], ?string $signature = null): Message
         {
             throw new SendFailed('535 5.7.8 Authentication failed');
         }

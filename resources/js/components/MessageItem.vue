@@ -60,8 +60,15 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
             class="flex w-full cursor-pointer items-center gap-3 text-start"
             @click="$emit('toggle')"
         >
-            <span class="shrink-0 text-sm font-medium text-gray-900 dark:text-gray-100">{{ name }}</span>
-            <span class="min-w-0 flex-1 truncate text-sm text-gray-500 dark:text-gray-400">{{ snippet }}</span>
+            <template v-if="message.automatic">
+                <!-- Sent by the website itself: kept small, it says nothing about the conversation. -->
+                <Badge pill :text="__('Automatic mail')" :title="__('Sent by the website, for example a confirmation. It does not count as your reply.')" data-inbox-automatic />
+                <span class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ message.subject || snippet }}</span>
+            </template>
+            <template v-else>
+                <span class="shrink-0 text-sm font-medium text-gray-900 dark:text-gray-100">{{ name }}</span>
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-500 dark:text-gray-400">{{ snippet }}</span>
+            </template>
             <Icon v-if="message.attachments?.length" name="inbox::paperclip" class="size-3.5 shrink-0 text-gray-400" />
             <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400" :title="fullDateTime(message.sent_at)">{{ listTime(message.sent_at) }}</span>
         </button>
@@ -76,7 +83,8 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
                     <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ name }}</span>
                         <span v-if="!outgoing && message.from_name" class="text-sm text-gray-500 dark:text-gray-400">{{ message.from_email }}</span>
-                        <Badge v-if="outgoing && !message.send_error" pill color="green" :text="__('Sent')" />
+                        <Badge v-if="message.automatic" pill :text="__('Automatic mail')" :title="__('Sent by the website, for example a confirmation. It does not count as your reply.')" data-inbox-automatic />
+                        <Badge v-else-if="outgoing && !message.send_error" pill color="green" :text="__('Sent')" />
                         <Badge v-if="message.send_error" pill color="red" :text="__('Not sent')" />
                     </div>
                     <div v-if="message.to?.length" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">

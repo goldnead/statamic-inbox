@@ -63,13 +63,17 @@ they are stored encrypted on the mailbox row and never shown again.
    the app password, press "Verbindung testen" (Test connection).
 2. The first fetch imports the last 90 days of INBOX and Sent (`INBOX_IMPORT_DAYS`).
 3. Open a conversation, reply freely, from a template or from an AI draft. Nothing is sent
-   without a click.
+   without a click. Signatures are set up per mailbox (tab "Signaturen") and picked in the reply
+   form.
+
+Mails the website itself sends through the mailbox (confirmations, invoices) are recognised as
+system mails and never count as your reply; see `inbox.system_mail` in the config.
 
 The Control Panel strings ship in German (`lang/de.json`); a few labels, among them the
 "Postfach" nav entry, are German in every locale.
 
 Limits of 0.1.0: no Microsoft 365 (no OAuth, app passwords only), no push or inbound webhooks
-(new mail arrives with the next scheduled fetch), replies are plain text without Cc, and a
+(new mail arrives with the next scheduled fetch), replies have no Cc and no formatting (plain text, sent with an escaped HTML copy), and a
 mailbox cannot be deleted from the Control Panel, only switched off.
 
 Permissions: `view inbox`, `reply inbox`, `manage inbox mailboxes`.

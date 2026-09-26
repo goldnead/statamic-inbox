@@ -25,8 +25,13 @@ class DraftSuggester
 
     public function __construct(protected LeadHubContacts $contacts) {}
 
-    /** @throws DraftUnavailable */
-    public function suggest(Conversation $conversation, ?string $instruction = null): string
+    /**
+     * @param  bool  $signature  a signature is chosen in the form: the draft
+     *                           then ends without a sign-off carrying a name
+     *
+     * @throws DraftUnavailable
+     */
+    public function suggest(Conversation $conversation, ?string $instruction = null, bool $signature = false): string
     {
         $key = (string) config('inbox.ai.api_key');
 
@@ -45,7 +50,7 @@ class DraftSuggester
                 ->post('/v1/messages', [
                     'model' => (string) config('inbox.ai.model'),
                     'max_tokens' => (int) config('inbox.ai.max_tokens', 1024),
-                    'system' => $this->system(),
+                    'system' => $this->system($signature),
                     'messages' => [['role' => 'user', 'content' => $this->prompt($conversation, $instruction)]],
                 ]);
         } catch (Throwable $e) {
@@ -71,7 +76,7 @@ class DraftSuggester
         return trim($text);
     }
 
-    protected function system(): string
+    protected function system(bool $signature = false): string
     {
         $style = trim((string) config('inbox.ai.style_prompt'));
 
@@ -80,6 +85,11 @@ class DraftSuggester
             .'no subject line, no quoted history, no commentary. Answer in the language of the last message. '
             .'Do not invent facts, prices or dates that are not in the conversation or the notes.',
             $style !== '' ? "Style:\n".$style : null,
+            // After the style: it may ask for a closing like "Liebe Grüße, Adrian".
+            $signature
+                ? 'A signature with the sender\'s name is added below the reply automatically. '
+                    .'Do not sign the reply: no closing line with a name, and no name at the end. This overrides the style above.'
+                : null,
         ]));
     }
 

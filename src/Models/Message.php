@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int $mailbox_id
  * @property int $conversation_id
  * @property string $direction
+ * @property bool $automatic a mail the website sent itself (SystemMailDetector)
  * @property string $message_id
  * @property string|null $in_reply_to
  * @property string|null $references
@@ -55,6 +56,7 @@ class Message extends Model
 
     protected $attributes = [
         'has_remote_images' => false,
+        'automatic' => false,
     ];
 
     protected function casts(): array
@@ -65,6 +67,7 @@ class Message extends Model
             'sent_at' => 'datetime',
             'imap_uid' => 'integer',
             'has_remote_images' => 'boolean',
+            'automatic' => 'boolean',
             'filter_headers' => 'array',
         ];
     }

@@ -45,7 +45,20 @@ const props = defineProps({
     urls: { type: Object, required: true },
     templates: { type: Array, default: () => [] },
     ai: { type: Boolean, default: false },
+    // The mailbox's signatures ({ id, name, preview }) and the preselected id.
+    signatures: { type: Array, default: () => [] },
+    signature: { type: String, default: null },
 });
+
+// ── Signature: under the text, above the quote; "none" leaves it out ────
+const NONE = 'none';
+const initialSignature = () => props.signature ?? props.signatures[0]?.id ?? NONE;
+const signatureId = ref(initialSignature());
+const signatureOptions = computed(() => [
+    ...props.signatures.map((s) => ({ value: s.id, label: s.name })),
+    { value: NONE, label: __('No signature') },
+]);
+const signaturePreview = computed(() => props.signatures.find((s) => s.id === signatureId.value)?.preview ?? null);
 
 const emit = defineEmits(['sent', 'failed']);
 
@@ -100,7 +113,11 @@ async function suggestDraft() {
     filling.value = true;
     problem.value = null;
     try {
-        const { data } = await axios.post(props.urls.draft, { instruction: instruction.value || null });
+        // With a signature chosen, the draft ends without a name of its own.
+        const { data } = await axios.post(props.urls.draft, {
+            instruction: instruction.value || null,
+            ...(props.signatures.length ? { signature: signatureId.value !== NONE } : {}),
+        });
         offer(data.text ?? '');
     } catch (e) {
         problem.value = asProblem(e, __('No draft could be suggested.'));
@@ -149,11 +166,13 @@ async function send() {
     const body = new FormData();
     body.append('text', text.value);
     files.value.forEach((file) => body.append('attachments[]', file));
+    if (props.signatures.length) body.append('signature', signatureId.value);
 
     try {
         await axios.post(props.urls.reply, body);
         text.value = '';
         files.value = [];
+        signatureId.value = initialSignature();
         template.value = null;
         instruction.value = '';
         globalThis.Statamic?.$dirty?.remove?.(DIRTY);
@@ -222,6 +241,17 @@ defineExpose({ setText });
 
             <Field id="inbox-reply-text" :error="errors.text" :label="__('Your reply')">
                 <Textarea id="inbox-reply-text" v-model="text" :rows="8" data-inbox-reply-text />
+            </Field>
+
+            <Field v-if="signatures.length" id="inbox-reply-signature" :label="__('Signature')" data-inbox-signature-field>
+                <div class="max-w-72">
+                    <Select id="inbox-reply-signature" v-model="signatureId" :options="signatureOptions" data-inbox-signature-select />
+                </div>
+                <div
+                    v-if="signaturePreview"
+                    class="mt-2 whitespace-pre-wrap break-words rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-400"
+                    data-inbox-signature-preview
+                >{{ signaturePreview }}</div>
             </Field>
 
             <ul v-if="files.length" class="flex flex-wrap gap-2">

@@ -4,7 +4,7 @@
 
 ### Changed
 
-- The Migadu preset sends over port 587 with STARTTLS instead of 465. Many hosts block outbound
+- The Migadu and All-Inkl presets send over port 587 with STARTTLS instead of 465. Many hosts block outbound
   465, and the connection test then times out. Sites that published `config/inbox.php` keep their
   own value; existing mailboxes keep their saved port.
 

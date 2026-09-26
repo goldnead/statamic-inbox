@@ -128,7 +128,8 @@ return [
         'all-inkl' => [
             'label' => 'All-Inkl',
             'imap_host' => '', 'imap_port' => 993, 'imap_encryption' => 'ssl',
-            'smtp_host' => '', 'smtp_port' => 465, 'smtp_encryption' => 'ssl',
+            // 587 with STARTTLS, same reason as Migadu: outbound 465 is often blocked.
+            'smtp_host' => '', 'smtp_port' => 587, 'smtp_encryption' => 'tls',
             'help' => 'https://all-inkl.com/wichtig/anleitungen/',
         ],
     ],

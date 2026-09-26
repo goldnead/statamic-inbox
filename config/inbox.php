@@ -115,7 +115,8 @@ return [
         'migadu' => [
             'label' => 'Migadu',
             'imap_host' => 'imap.migadu.com', 'imap_port' => 993, 'imap_encryption' => 'ssl',
-            'smtp_host' => 'smtp.migadu.com', 'smtp_port' => 465, 'smtp_encryption' => 'ssl',
+            // 587 with STARTTLS: many hosts block outbound 465 (seen on Hetzner, 26.09.2026).
+            'smtp_host' => 'smtp.migadu.com', 'smtp_port' => 587, 'smtp_encryption' => 'tls',
             'help' => 'https://migadu.com/guides/imap/',
         ],
         'manitu' => [

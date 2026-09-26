@@ -163,6 +163,8 @@ it('renders the mailbox list, the create form and the edit form without the pass
         ->and($create['props']['mailbox']['has_password'])->toBeFalse()
         ->and($create['props']['testUrl'])->toEndWith('/cp/inbox/mailboxes/test')
         ->and($create['props']['presets'])->toHaveKey('google')
+        // Many hosts block outbound 465; Migadu also takes 587 with STARTTLS.
+        ->and($create['props']['presets']['migadu'])->toMatchArray(['smtp_port' => 587, 'smtp_encryption' => 'tls'])
         ->and(inertiaPage($edit)['props']['mailbox']['has_password'])->toBeTrue()
         ->and(inertiaPage($edit)['props']['isNew'])->toBeFalse()
         ->and($edit->getContent())->not->toContain(INBOX_TEST_PASSWORD);

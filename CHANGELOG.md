@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 — 2026-09-27
+
+Signatures, and the mails your website sends through the mailbox no longer count as yours.
 
 ### Added
 

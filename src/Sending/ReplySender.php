@@ -138,13 +138,26 @@ class ReplySender
      * as a blockquote. No markup from what was typed (the signature
      * included) reaches the mail.
      */
-    public static function html(string $text): string
+    public static function html(string $text, ?string $body = null): string
     {
         $text = str_replace(["\r\n", "\r"], "\n", $text);
-        $markerAt = strpos($text, QuoteStripper::MARKER);
+        $body = $body === null ? null : str_replace(["\r\n", "\r"], "\n", $body);
 
-        $body = $markerAt === false ? $text : rtrim(substr($text, 0, $markerAt));
-        $html = '<div>'.Signatures::html($body).'</div>';
+        // Where the quote starts: right after what was written (text and
+        // signature, stored as `body_stripped`), so a marker typed into the
+        // text or the signature does not cut it early. Without it, the last
+        // marker standing on its own between blank lines.
+        if ($body !== null && str_starts_with($text, $body)) {
+            $after = substr($text, strlen($body));
+            $rest = ltrim($after);
+            $markerAt = str_starts_with($rest, QuoteStripper::MARKER) ? strlen($text) - strlen($rest) : false;
+        } else {
+            $found = strrpos($text, "\n\n".QuoteStripper::MARKER."\n\n");
+            $markerAt = $found === false ? false : $found + 2;
+        }
+
+        $written = $markerAt === false ? $text : rtrim(substr($text, 0, $markerAt));
+        $html = '<div>'.Signatures::html($written).'</div>';
 
         if ($markerAt === false) {
             return $html;

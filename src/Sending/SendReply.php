@@ -94,7 +94,7 @@ class SendReply implements ShouldQueue
             ->subject($message->subject)
             ->text((string) $message->text)
             // Since 0.2.2 also as HTML, so a signature's links are links.
-            ->html(ReplySender::html((string) $message->text))
+            ->html(ReplySender::html((string) $message->text, $message->body_stripped))
             ->date($message->sent_at ?? Carbon::now());
 
         foreach ((array) $message->to as $recipient) {

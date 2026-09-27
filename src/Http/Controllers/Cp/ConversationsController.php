@@ -259,6 +259,7 @@ class ConversationsController extends Controller
         }
 
         $contact = $conversation->contact_id ? $contacts->findById($conversation->contact_id) : null;
+        $suggested = $conversation->mailbox === null ? [null, null] : $signatures->suggestion($conversation->mailbox, $conversation);
 
         if ($contact !== null && Route::has('statamic.cp.leadhub.contacts.show')) {
             $contact['url'] = cp_route('leadhub.contacts.show', $contact['id']);
@@ -306,7 +307,10 @@ class ConversationsController extends Controller
                     'name' => (string) ($s['name'] ?? ''),
                     'preview' => $signatures->render($s, $conversation->mailbox),
                 ])->all(),
-            'signature' => $conversation->mailbox === null ? null : ($signatures->suggest($conversation->mailbox, $conversation)['id'] ?? null),
+            'signature' => $suggested[0]['id'] ?? null,
+            // Why that one: the form says so under the picker.
+            'signatureReason' => $suggested[0] === null ? null
+                : ($suggested[1] !== null ? __('Matches the tag :tag', ['tag' => $suggested[1]]) : __('Default')),
             'leadhub' => $contacts->available(),
             'templates' => $templates->options(),
             'ai' => (string) config('inbox.ai.api_key') !== '',

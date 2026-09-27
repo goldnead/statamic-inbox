@@ -128,8 +128,11 @@ class ReclassifyMailboxes extends Command
             foreach ($messages as $message) {
                 $counts['messages']++;
 
-                // Headers stored by 0.2.0 lack Reply-To; those are read again.
-                if (is_array($message->filter_headers) && array_key_exists('reply_to', $message->filter_headers)) {
+                // Headers stored by 0.2.0 lack Reply-To, those of an outgoing
+                // mail before 0.2.2 the mail program; those are read again.
+                $stored = $message->filter_headers;
+                if (is_array($stored) && array_key_exists('reply_to', $stored)
+                    && ($message->direction !== Message::OUT || array_key_exists('mailer', $stored))) {
                     $headers[$message->id] = $message->filter_headers;
 
                     continue;
@@ -165,7 +168,8 @@ class ReclassifyMailboxes extends Command
                         $headers[$message->id] ?? [],
                         $message->message_id_full ?? $message->message_id,
                         (string) $message->subject,
-                        $message->in_reply_to,
+                        // What it answers, read as the fetch reads it.
+                        $message->in_reply_to ?: ($message->referenceIds()[0] ?? null),
                     );
 
                     if ($system[$message->id] && ! $message->automatic) {

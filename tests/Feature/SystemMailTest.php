@@ -190,8 +190,10 @@ it('never takes a reply sent from the inbox for a system mail', function () {
 
 it('marks a system mail as automatic in the conversation page', function () {
     deliverAndFetch($this->imap, $this->mailbox, ['INBOX' => ['06-same-subject-other-sender.eml']]);
+    // Answering something, only an automation header makes it a system mail.
     fetchRaw($this->imap, $this->mailbox, 'Sent', systemMail('booking-2@goldner.test', 'Deine Buchung: Probestunde', [
         'In-Reply-To' => '<bob-20260923-1100@example.org>',
+        'Auto-Submitted' => 'auto-generated',
     ], 'bob@example.org', 'Wed, 23 Sep 2026 12:00:00 +0200'));
 
     $response = $this->actingAs(inboxCpUser(['view inbox']))

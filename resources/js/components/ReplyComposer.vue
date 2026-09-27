@@ -48,6 +48,8 @@ const props = defineProps({
     // The mailbox's signatures ({ id, name, preview }) and the preselected id.
     signatures: { type: Array, default: () => [] },
     signature: { type: String, default: null },
+    // Why that one is preselected ("Passt zum Tag Coaching", "Standard").
+    signatureReason: { type: String, default: null },
 });
 
 // ── Signature: under the text, above the quote; "none" leaves it out ────
@@ -243,7 +245,13 @@ defineExpose({ setText });
                 <Textarea id="inbox-reply-text" v-model="text" :rows="8" data-inbox-reply-text />
             </Field>
 
-            <Field v-if="signatures.length" id="inbox-reply-signature" :label="__('Signature')" data-inbox-signature-field>
+            <Field
+                v-if="signatures.length"
+                id="inbox-reply-signature"
+                :label="__('Signature')"
+                :instructions="signatureId === signature ? signatureReason : null"
+                data-inbox-signature-field
+            >
                 <div class="max-w-72">
                     <Select id="inbox-reply-signature" v-model="signatureId" :options="signatureOptions" data-inbox-signature-select />
                 </div>

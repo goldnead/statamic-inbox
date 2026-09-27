@@ -100,14 +100,32 @@ return [
     |
     | Mails the website sends itself through this mailbox (confirmations,
     | invoices, access mails) land in Sent next to your own. They never make a
-    | conversation relevant (see Filtering\SystemMailDetector). `subjects` is
-    | the last resort: a mail whose subject starts with one of these counts as
-    | a system mail. `headers` adds header names of your own that mark one.
+    | conversation relevant (see Filtering\SystemMailDetector). A mail whose
+    | subject starts with one of `subjects` counts as a system mail, unless a
+    | mail program sent it or it answers another mail. The defaults are the
+    | subjects the goldnead suite sends, in both forms of address. `senders`
+    | are From names only your website's mailer uses. `headers` adds header
+    | names of your own that mark a system mail.
     |
     */
 
     'system_mail' => [
-        'subjects' => ['Deine Buchung:', 'Deine Bestellung:', 'Deine Rechnung', 'Dein Zugang'],
+        'subjects' => [
+            'Deine Buchung:', 'Deine Bestellung:', 'Dein Zugang',
+            'Deine Rechnung', 'Ihre Rechnung',
+            'Dein Kauf ist noch nicht abgeschlossen', 'Ihr Kauf ist noch nicht abgeschlossen',
+            'Eingang deiner Kündigung', 'Eingang Ihrer Kündigung',
+            'Eingang deines Widerrufs', 'Eingang Ihres Widerrufs',
+            'Deine Zahlung konnte nicht eingezogen werden', 'Ihre Zahlung konnte nicht eingezogen werden',
+            'Dein Link zu deinen Bestellungen', 'Ihr Link zu Ihren Bestellungen',
+            'Bestätigung deiner Kündigung', 'Bestätigung Ihrer Kündigung',
+            'Deine Karte für', 'Ihre Karte für',
+            'Deine Plätze für', 'Ihre Plätze für', 'Ein Platz für dich:', 'Ein Platz für Sie:',
+            'Dein Konto bei', 'Ihr Konto bei',
+            'Dein Bestätigungscode für', 'Ihr Bestätigungscode für',
+            'Bestätige deine E-Mail-Adresse', 'Bestätigen Sie Ihre E-Mail-Adresse',
+        ],
+        'senders' => [],
         'headers' => [],
     ],
 

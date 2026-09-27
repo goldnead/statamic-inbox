@@ -141,6 +141,17 @@ describe('ReplyComposer', () => {
         expect(wrapper.vm.$.setupState.signatureId).toBe('chor');
     });
 
+    it('says why the signature is preselected, and only while it is picked', async () => {
+        const wrapper = mount(ReplyComposer, { props: { recipient: 'a@b.test', urls, signatures, signature: 'chor', signatureReason: 'Passt zum Tag Chor' } });
+        const field = () => wrapper.find('[data-inbox-signature-field]');
+
+        expect(field().attributes('data-attr-instructions')).toBe('Passt zum Tag Chor');
+
+        wrapper.vm.$.setupState.signatureId = 'std';
+        await wrapper.vm.$nextTick();
+        expect(field().attributes('data-attr-instructions')).toBeUndefined();
+    });
+
     it('shows no signature field when the mailbox has none', () => {
         const wrapper = mount(ReplyComposer, { props: { recipient: 'a@b.test', urls } });
 
@@ -212,6 +223,17 @@ describe('Mailboxes/Edit', () => {
         expect(sent.map((s) => [s.id, s.name, s.default])).toEqual([['a', 'Standard', true], [null, 'Chor', false]]);
         // The new one has its id from the server now.
         expect(wrapper.vm.$.setupState.form.signatures[1].id).toBe('b');
+    });
+
+    it('inserts the name and address placeholders by button', async () => {
+        const wrapper = mount(MailboxEdit, { props: { ...props, mailbox: { ...mailbox, signatures: [{ id: 'a', name: 'S', body: 'Liebe Grüße', default: true, tags: [] }] } } });
+        const form = wrapper.vm.$.setupState.form;
+
+        await wrapper.find('[data-inbox-insert-name]').trigger('click');
+        expect(form.signatures[0].body).toBe('Liebe Grüße\n{{ sender.name }}');
+
+        await wrapper.find('[data-inbox-insert-address]').trigger('click');
+        expect(form.signatures[0].body).toBe('Liebe Grüße\n{{ sender.name }}\n{{ mailbox.email }}');
     });
 
     it('hides the tag rules without LeadHub', () => {

@@ -88,7 +88,7 @@ $coaching = Mailbox::create([
     'from_name' => 'Adrian Goldner',
     // 0.2.2: Anna carries the LeadHub tag "Coaching", so hers is preselected.
     'signatures' => [
-        ['id' => 'standard', 'name' => 'Standard', 'default' => true, 'tags' => [],
+        ['id' => 'allgemein', 'name' => 'Allgemein', 'default' => true, 'tags' => [],
             'body' => "Liebe Grüße\n{{ sender.name }}\nhttps://adriangoldner.com"],
         ['id' => 'coaching', 'name' => 'Coaching', 'default' => false, 'tags' => ['Coaching'],
             'body' => "Bis bald und liebe Grüße\n{{ sender.name }}\nStimmcoaching · {{ mailbox.email }}\nhttps://adriangoldner.com/coaching"],

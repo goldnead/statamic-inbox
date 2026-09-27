@@ -185,13 +185,25 @@ class Mailbox extends Model
         }
 
         $at = strrpos($address, '@');
-        $plus = strpos($address, '+');
 
-        if ($at === false || $plus === false || $plus > $at) {
+        if ($at === false) {
             return false;
         }
 
-        return in_array(substr($address, 0, $plus).substr($address, $at), $own, true);
+        // Every "+" in the local part: an own address may carry one itself
+        // (a+b@x makes a+b+c@x ours).
+        $local = substr($address, 0, $at);
+        $offset = 0;
+
+        while (($plus = strpos($local, '+', $offset)) !== false) {
+            if (in_array(substr($local, 0, $plus).substr($address, $at), $own, true)) {
+                return true;
+            }
+
+            $offset = $plus + 1;
+        }
+
+        return false;
     }
 
     /**

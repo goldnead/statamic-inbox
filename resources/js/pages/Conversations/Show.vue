@@ -46,6 +46,7 @@ const props = defineProps({
     ai: { type: Boolean, default: false },
     signatures: { type: Array, default: () => [] },
     signature: { type: String, default: null },
+    signatureReason: { type: String, default: null },
     canHideDomain: { type: Boolean, default: true },
     canReply: { type: Boolean, default: false },
     urls: { type: Object, required: true },
@@ -293,6 +294,7 @@ function reloadThread() {
                     :ai="ai"
                     :signatures="signatures"
                     :signature="signature"
+                    :signature-reason="signatureReason"
                     @sent="reloadThread"
                     @failed="reloadThread"
                 />

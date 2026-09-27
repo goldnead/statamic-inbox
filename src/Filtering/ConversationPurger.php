@@ -20,10 +20,10 @@ class ConversationPurger
 {
     /**
      * @param  iterable<Conversation>  $conversations
-     * @param  string|callable(Message): string  $reason
+     * @param  string|\Closure(Message): string  $reason
      * @return int messages removed
      */
-    public function purge(iterable $conversations, string|callable $reason): int
+    public function purge(iterable $conversations, string|\Closure $reason): int
     {
         $removed = 0;
         $paths = [];

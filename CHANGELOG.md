@@ -24,9 +24,12 @@
   set it to "waiting", and no longer make the recipient a known correspondent. On their own they
   open no conversation (skip reason `system`); inside one that exists anyway they show folded and
   marked "automatisch". Recognised by `Auto-Submitted`, `X-Auto-Response-Suppress` or `X-Suite-*`
-  headers, then by a Symfony/Laravel Message-ID on a mail that answers nothing (replies from the
-  inbox and from Gmail never count), then by subject (`inbox.system_mail.subjects`, default
-  "Deine Buchung:", "Deine Bestellung:", "Deine Rechnung", "Dein Zugang").
+  headers; otherwise never when a person clearly wrote it (a reply from the inbox, Gmail's
+  webmail, a mail program in `User-Agent`/`X-Mailer` such as Roundcube, Thunderbird, Apple Mail or
+  Outlook, or a mail that answers another); then by subject (`inbox.system_mail.subjects`, by
+  default the subjects the suite sends, in both forms of address), or by a Symfony/Laravel
+  Message-ID together with a sender name from `inbox.system_mail.senders`. The Message-ID alone
+  never decides: Roundcube builds the same shape.
 - `info+anything@domain` is one of your own addresses when `info@domain` is the mailbox address
   or an alias: mail to or from it makes no conversation.
 - `inbox:reclassify` applies both to what is stored: conversations made only of system mails or
@@ -37,6 +40,14 @@
 
 - A reply sent from the inbox gets its IMAP UID once the fetch meets it in Sent, so
   `inbox:reclassify` can read its headers later.
+
+### Security
+
+- The clean-up that deletes conversations (hiding a sender, `inbox:reclassify`) took a reason
+  given as text for a callable when the text named a PHP function. In 0.2.1 only the fixed
+  reasons `self` and `blocked` reached it, never outside input, so it was not reachable; the
+  reason `system` of this release would have been. A reason is now only ever called when it is a
+  closure.
 
 ### Upgrading
 

@@ -28,25 +28,35 @@ class Signatures
      */
     public function suggest(Mailbox $mailbox, Conversation $conversation): ?array
     {
+        return $this->suggestion($mailbox, $conversation)[0];
+    }
+
+    /**
+     * The preselected signature and the tag that picked it (null: the default).
+     *
+     * @return array{0: array<string, mixed>|null, 1: string|null}
+     */
+    public function suggestion(Mailbox $mailbox, Conversation $conversation): array
+    {
         $signatures = $mailbox->signatureList();
 
         if ($signatures === []) {
-            return null;
+            return [null, null];
         }
 
         $tags = $this->contactTags($conversation);
 
         if ($tags !== []) {
             foreach ($signatures as $signature) {
-                $wanted = array_map(fn ($tag) => mb_strtolower(trim((string) $tag)), (array) ($signature['tags'] ?? []));
-
-                if (array_intersect($wanted, $tags) !== []) {
-                    return $signature;
+                foreach ((array) ($signature['tags'] ?? []) as $tag) {
+                    if (in_array(mb_strtolower(trim((string) $tag)), $tags, true)) {
+                        return [$signature, (string) $tag];
+                    }
                 }
             }
         }
 
-        return collect($signatures)->first(fn ($signature) => (bool) ($signature['default'] ?? false)) ?? $signatures[0];
+        return [collect($signatures)->first(fn ($signature) => (bool) ($signature['default'] ?? false)) ?? $signatures[0], null];
     }
 
     /**

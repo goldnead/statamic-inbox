@@ -83,6 +83,34 @@ function addSignature() {
     form.value.signatures = [...form.value.signatures, newSignature(form.value.signatures)];
 }
 
+// The two placeholders, inserted by button so nobody has to type them.
+const NAME_TOKEN = '{{ sender.name }}';
+const ADDRESS_TOKEN = '{{ mailbox.email }}';
+
+// Where the cursor was when the text field was left (the button click
+// takes the focus), per signature.
+const cursors = new Map();
+
+function rememberCursor(index, event) {
+    const field = event.target;
+    if (field?.tagName === 'TEXTAREA') cursors.set(index, [field.selectionStart, field.selectionEnd]);
+}
+
+/** At the last cursor position in the text, else on a line of its own at the end. */
+function insertToken(index, token) {
+    const signature = form.value.signatures[index];
+    const body = signature.body ?? '';
+    const cursor = cursors.get(index);
+
+    if (cursor && cursor[0] <= body.length) {
+        signature.body = body.slice(0, cursor[0]) + token + body.slice(cursor[1]);
+        cursors.set(index, [cursor[0] + token.length, cursor[0] + token.length]);
+        return;
+    }
+
+    signature.body = body === '' ? token : `${body.replace(/\s+$/, '')}\n${token}`;
+}
+
 function signatureError(index, field) {
     return errors.value[`signatures.${index}.${field}`];
 }
@@ -359,7 +387,8 @@ function onThisPage(problem) {
         />
 
         <Tabs v-model="activeTab">
-            <TabList>
+            <!-- Five tabs do not fit a phone: one line, scrolled sideways. -->
+            <TabList class="overflow-x-auto [&_button]:whitespace-nowrap" data-inbox-tab-list>
                 <TabTrigger name="account">
                     {{ __('Account') }}
                     <Badge v-if="tabsWithErrors.has('account')" color="red" pill class="ms-1.5" text="!" :aria-label="__('This tab has errors')" />
@@ -590,12 +619,7 @@ function onThisPage(problem) {
                 </Panel>
             </TabContent>
             <TabContent name="signatures">
-                <Description
-                    class="mt-4"
-                    :text="leadhubTags === null
-                        ? __('A signature is added under your reply. The default is preselected; in the reply form you can pick another one or none.')
-                        : __('A signature is added under your reply. The default is preselected. If a signature names tags, it is preselected for contacts with one of those tags; the first signature from the top that fits wins.')"
-                />
+                <Description class="mt-4" :text="__('The signature goes under your reply.')" />
 
                 <Panel v-if="!form.signatures.length" class="mt-4" data-inbox-signatures-empty>
                     <Card>
@@ -648,12 +672,23 @@ function onThisPage(problem) {
                         </Field>
 
                         <Field :id="`signature-${index}-body`" :label="__('Text')" required :error="signatureError(index, 'body')"
-                            :instructions="__('Plain text; line breaks stay, web addresses become links. {{ sender.name }} is replaced by the sender name, {{ mailbox.email }} by the address of this mailbox.')">
-                            <Textarea :id="`signature-${index}-body`" v-model="signature.body" :rows="4" data-inbox-signature-body />
+                            :instructions="__('Plain text; line breaks stay, web addresses become links. Your name and the address of this mailbox are filled in by themselves.')">
+                            <div @focusout="rememberCursor(index, $event)">
+                                <Textarea :id="`signature-${index}-body`" v-model="signature.body" :rows="4" data-inbox-signature-body />
+                            </div>
+                            <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <Button size="xs" variant="ghost" icon="plus" :text="__('Insert name')" data-inbox-insert-name @click="insertToken(index, NAME_TOKEN)" />
+                                <Button size="xs" variant="ghost" icon="plus" :text="__('Insert address')" data-inbox-insert-address @click="insertToken(index, ADDRESS_TOKEN)" />
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                    {{ __('In the text:') }}
+                                    <code class="whitespace-nowrap">{{ NAME_TOKEN }}</code>,
+                                    <code class="whitespace-nowrap">{{ ADDRESS_TOKEN }}</code>
+                                </span>
+                            </div>
                         </Field>
 
                         <div class="grid sm:grid-cols-2 gap-6 *:min-w-0">
-                            <Field :id="`signature-${index}-default`" :label="__('Default')"
+                            <Field :id="`signature-${index}-default`" :label="__('Use as default')"
                                 :instructions="__('Preselected when no tag fits.')">
                                 <Switch
                                     :id="`signature-${index}-default`"
@@ -667,7 +702,7 @@ function onThisPage(problem) {
                                 v-if="leadhubTags !== null"
                                 :id="`signature-${index}-tags`"
                                 :label="__('For contacts with these tags')"
-                                :instructions="__('Empty: only as default or picked by hand.')"
+                                :instructions="__('Preselected when the contact has one of these tags. If several signatures fit, the top one wins.')"
                             >
                                 <Combobox
                                     :id="`signature-${index}-tags`"

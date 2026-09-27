@@ -66,6 +66,7 @@ const hasQuote = computed(() => (props.message.html_sanitized ? htmlHasQuote.val
         >
             <template v-if="message.automatic">
                 <!-- Sent by the website itself: kept small, it says nothing about the conversation. -->
+                <span class="shrink-0 text-sm font-medium text-gray-900 dark:text-gray-100">{{ name }}</span>
                 <Badge pill :text="__('Automatic mail')" :title="__('Sent by the website, for example a confirmation. It does not count as your reply.')" data-inbox-automatic />
                 <span class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ message.subject || snippet }}</span>
             </template>

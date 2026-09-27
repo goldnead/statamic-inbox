@@ -123,7 +123,7 @@ class DraftSuggester
         $parts[] = "Conversation \"{$conversation->subject}\", oldest first:\n\n".$messages
             ->map(fn (Message $message) => sprintf(
                 "[%s, %s, %s]\n%s",
-                $message->direction === Message::IN ? 'from them' : 'from us',
+                $message->direction === Message::IN ? 'from them' : ($message->automatic ? 'automatic mail from our website' : 'from us'),
                 $message->from_name ?: $message->from_email,
                 $message->sent_at?->toDateTimeString() ?? '',
                 Str::limit(trim((string) ($message->body_stripped ?? $message->text)), self::CHARS_PER_MESSAGE)

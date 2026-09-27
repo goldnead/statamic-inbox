@@ -39,6 +39,7 @@ function importAsBefore($client, Mailbox $mailbox, string $folder, string $raw, 
         'direction' => $folder === 'Sent' ? 'out' : 'in',
         'message_id' => MessageIds::key($parsed->messageId),
         'in_reply_to' => $parsed->inReplyTo,
+        'references' => implode(' ', $parsed->references) ?: null,
         'from_email' => $parsed->fromEmail,
         'subject' => $parsed->subject,
         'text' => $parsed->text,
@@ -88,6 +89,26 @@ it('counts on a dry run and changes nothing', function () {
 
     expect([Message::count(), Conversation::count(), SkippedMessage::count()])->toBe($before)
         ->and(Message::where('automatic', true)->count())->toBe(0);
+});
+
+it('never deletes your own mail from a webmail or one that answers by References only', function () {
+    // Roundcube: a 32-hex Message-ID like Symfony's, and a subject like an invoice's.
+    importAsBefore($this->client, $this->mailbox, 'Sent', mailFixture('30-sent-roundcube-personal.eml'), 'carla@example.net');
+
+    // No In-Reply-To, only References: an answer, as the fetch reads it.
+    $referencesOnly = str_replace(
+        ['Message-ID: <9b2e4c7a1f0d38e65a4b2c1d0e9f8a7b@goldner.test>', 'User-Agent: Roundcube Webmail/1.6.9', 'To: Carla Beispiel <carla@example.net>'],
+        ["Message-ID: <7c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f@goldner.test>\nReferences: <CAjonas001@mail.gmail.com>", 'X-Nothing: 1', 'To: Jonas Adler <jonas@example.net>'],
+        mailFixture('30-sent-roundcube-personal.eml'),
+    );
+    importAsBefore($this->client, $this->mailbox, 'Sent', $referencesOnly, 'jonas@example.net');
+
+    $this->artisan('inbox:reclassify', ['--mailbox' => $this->mailbox->id])->assertSuccessful();
+
+    expect(Conversation::where('counterpart_email', 'carla@example.net')->exists())->toBeTrue()
+        ->and(Conversation::where('counterpart_email', 'jonas@example.net')->exists())->toBeTrue()
+        ->and(Message::where('message_id', '9b2e4c7a1f0d38e65a4b2c1d0e9f8a7b@goldner.test')->sole()->automatic)->toBeFalse()
+        ->and(Message::where('message_id', '7c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f@goldner.test')->sole()->automatic)->toBeFalse();
 });
 
 it('deletes system-only and own-address conversations and marks the rest', function () {

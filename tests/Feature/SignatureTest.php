@@ -132,8 +132,42 @@ it('hands the reply form the signatures, previews and the preselected one', func
     $props = $response->viewData('page')['props'];
 
     expect($props['signature'])->toBe('sig-default')
+        ->and($props['signatureReason'])->toBe('Default')
         ->and(collect($props['signatures'])->pluck('id')->all())->toBe(['sig-default', 'sig-chor', 'sig-kurs'])
         ->and($props['signatures'][0]['preview'])->toBe("Liebe Grüße\nAdrian Goldner");
+});
+
+it('says why a signature is preselected: the tag that matched', function () {
+    LeadHub::create(['email' => 'anna.beispiel@example.com', 'first_name' => 'Anna', 'tags' => ['Chorleitung']]);
+
+    $response = $this->actingAs(inboxCpUser(['view inbox', 'reply inbox']))
+        ->get(cp_route('inbox.conversations.show', $this->conversation->id));
+    $props = $response->viewData('page')['props'];
+
+    expect($props['signature'])->toBe('sig-chor')
+        ->and($props['signatureReason'])->toBe('Matches the tag Chorleitung');
+});
+
+it('does not split the HTML part at a quote marker typed into the text or the signature', function () {
+    $this->mailbox->update(['signatures' => [[
+        'id' => 's', 'name' => 'S', 'default' => true, 'tags' => [],
+        'body' => "Adrian\n".QuoteStripper::MARKER."\nSignaturende",
+    ]]]);
+
+    app(ReplySender::class)->send($this->conversation->fresh(), "Oben\n\n".QuoteStripper::MARKER."\n\nNach dem Marker");
+
+    $html = (string) sentEmail($this->smtp)->getHtmlBody();
+    $quoteAt = strpos($html, '<blockquote');
+
+    expect(substr_count($html, '<blockquote'))->toBe(1)
+        ->and(strpos($html, 'Nach dem Marker'))->toBeLessThan($quoteAt)
+        ->and(strpos($html, 'Signaturende'))->toBeLessThan($quoteAt)
+        // The separator paragraph is the real one, under the signature.
+        ->and(substr_count($html, '<p>'))->toBe(1)
+        ->and(strpos($html, 'Signaturende'))->toBeLessThan(strpos($html, '<p>'))
+        ->and(substr($html, $quoteAt))->not->toContain('Nach dem Marker')
+        // The quote is Anna's mail, not our own text.
+        ->and(substr($html, $quoteAt))->toContain('Dienstag');
 });
 
 it('sends the signature picked in the reply form', function () {

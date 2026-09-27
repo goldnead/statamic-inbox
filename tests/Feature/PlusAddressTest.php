@@ -67,3 +67,12 @@ it('knows its own addresses with and without a plus part', function () {
         ->and($mailbox->isOwnAddress('infox@goldner.test'))->toBeFalse()
         ->and($mailbox->isOwnAddress(''))->toBeFalse();
 });
+
+it('knows a plus address of a mailbox address that is a plus address itself', function () {
+    $mailbox = new Mailbox(['email' => 'adrian+inbox@goldner.test']);
+
+    expect($mailbox->isOwnAddress('adrian+inbox@goldner.test'))->toBeTrue()
+        ->and($mailbox->isOwnAddress('adrian+inbox+nl-1@goldner.test'))->toBeTrue()
+        ->and($mailbox->isOwnAddress('adrian+other@goldner.test'))->toBeFalse()
+        ->and($mailbox->isOwnAddress('adrian@goldner.test'))->toBeFalse();
+});

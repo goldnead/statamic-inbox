@@ -13,6 +13,7 @@ use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Integrations\SuiteBridges;
 use Goldnead\StatamicInbox\Mail\SmtpTransportFactory;
 use Goldnead\StatamicInbox\Models\Conversation;
+use Goldnead\StatamicInbox\Support\ConversationQuery;
 use Goldnead\StatamicInbox\Support\HostGuard;
 use Goldnead\StatamicInbox\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
@@ -60,7 +61,7 @@ class ServiceProvider extends AddonServiceProvider
         if ($this->app->runningInConsole()) {
             // By hand: core's command discovery runs after Statamic's boot
             // sequence, which a plain console context never reaches.
-            $this->commands([FetchMailboxes::class, Console\Commands\ReclassifyMailboxes::class]);
+            $this->commands([FetchMailboxes::class, Console\Commands\ReclassifyMailboxes::class, Console\Commands\InboxSummary::class]);
         }
     }
 
@@ -142,7 +143,7 @@ class ServiceProvider extends AddonServiceProvider
         try {
             return Schema::hasTable('inbox_conversations')
                 // Only relevant ones: first contacts have their own count on the "Neu" tab.
-                ? Conversation::query()->where('unread', true)->where('status', '!=', Conversation::STATUS_NEW)->count()
+                ? ConversationQuery::unread(Conversation::query())->count()
                 : 0;
         } catch (\Throwable) {
             return 0;

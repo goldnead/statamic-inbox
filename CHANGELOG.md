@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`inbox:summary`** for agents over SSH: per mailbox (name, address, brand) the numbers new,
+  open and of those unread, waiting longer than `--wartet` days (default 7), snoozed and snoozed
+  until today, plus fetch problems (`last_error`, folder errors, messages given up on). `--json`
+  for a fixed JSON shape, `--details` for the first five conversations behind each number
+  (subject, other side, age; never a body), `--brand` to narrow to one brand. Read only: no
+  write, no event, no log line, and `unread` stays as it was. See "For agents / CLI" in the
+  README.
+
+### Changed
+
+- The tab logic moved from `ConversationsController` into `Support\ConversationQuery`, which the
+  listing, the unread badge in the nav and `inbox:summary` now share. The tab counts and the
+  badge are unchanged.
+
 ## 0.2.2 — 2026-09-27
 
 Signatures, and the mails your website sends through the mailbox no longer count as yours.

@@ -17,6 +17,7 @@ use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Sending\ReplySender;
 use Goldnead\StatamicInbox\Sending\SendFailed;
 use Goldnead\StatamicInbox\Sending\Signatures;
+use Goldnead\StatamicInbox\Support\ConversationQuery;
 use Goldnead\StatamicInbox\Support\ErrorExplainer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -40,7 +41,7 @@ class ConversationsController extends Controller
     use QueriesFilters;
 
     /** "new" holds first contacts from unknown people; the others only relevant ones. */
-    public const TABS = ['open', 'waiting', 'closed', 'snoozed', 'new'];
+    public const TABS = ConversationQuery::TABS;
 
     /** The filter key InboxMailbox answers to. */
     public const FILTER_KEY = 'inbox-conversations';
@@ -108,7 +109,7 @@ class ConversationsController extends Controller
                     'latest' => (int) $f->getAttribute('latest'),
                 ])
                 ->all(),
-            'unreadCount' => Conversation::query()->where('unread', true)->where('status', '!=', Conversation::STATUS_NEW)->count(),
+            'unreadCount' => ConversationQuery::unread(Conversation::query())->count(),
             'canReply' => Gate::allows('reply inbox'),
             'canManageMailboxes' => Gate::allows('manage inbox mailboxes'),
             'mailboxesUrl' => cp_route('inbox.mailboxes.index'),
@@ -133,14 +134,8 @@ class ConversationsController extends Controller
      */
     protected function inTab(Builder $query, string $tab): Builder
     {
-        $now = Carbon::now();
-
-        if ($tab === 'snoozed') {
-            return $query->where('snoozed_until', '>', $now)->where('status', '!=', Conversation::STATUS_NEW);
-        }
-
-        return $query->where('status', $tab)
-            ->where(fn ($q) => $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', $now));
+        // Shared with the nav badge and `inbox:summary`, so the three agree.
+        return ConversationQuery::inTab($query, $tab);
     }
 
     protected function listing(Request $request, string $tab, LeadHubContacts $contacts): JsonResponse

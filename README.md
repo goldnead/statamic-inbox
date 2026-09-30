@@ -78,6 +78,44 @@ mailbox cannot be deleted from the Control Panel, only switched off.
 
 Permissions: `view inbox`, `reply inbox`, `manage inbox mailboxes`.
 
+## For agents / CLI
+
+`inbox:summary` answers "what lies in the inbox?" per mailbox, for an agent over SSH. It is read
+only: it writes nothing (not even `unread`), dispatches no events and logs nothing. The numbers
+come from the same query class as the Control Panel tabs, so `open` here is "Offen" there.
+
+```bash
+php artisan inbox:summary                      # one line per mailbox and a total
+php artisan inbox:summary --json               # counts only
+php artisan inbox:summary --json --details     # plus the first five conversations per number
+php artisan inbox:summary --json --wartet=14 --brand=chor
+```
+
+Every mailbox of every brand unless `--brand=<handle|id>` narrows it; an unknown brand exits 1
+with `{"error": "Unknown brand [x]."}`. `--wartet` (default 7) sets when a conversation in "Wartet"
+counts as waiting too long.
+
+```json
+{
+  "generated_at": "2026-09-30T08:00:00+02:00", "multi_brand": true, "brand": null, "waiting_days": 7,
+  "mailboxes": [{
+    "id": 1, "name": "Adrian", "email": "adrian@example.com", "brand": "default", "active": true,
+    "last_fetched_at": "2026-09-30T07:59:00+02:00",
+    "counts": {"new": 2, "open": 5, "open_unread": 1, "waiting": 3, "waiting_over_days": 1,
+               "snoozed": 2, "snoozed_due_today": 1},
+    "problems": {"has_problems": false, "last_error": null, "last_error_scope": null,
+                 "folder_errors": {}, "failures_given_up": 0},
+    "details": null
+  }],
+  "totals": {"new": 2, "open": 5, "open_unread": 1, "waiting": 3, "waiting_over_days": 1,
+             "snoozed": 2, "snoozed_due_today": 1, "mailboxes_with_problems": 0}
+}
+```
+
+With `--details`, `details` holds the same keys as `counts`, each a list of up to five
+`{"id", "subject", "counterpart_email", "last_message_at", "age_days"}` — never a message body.
+`snoozed_due_today` means the snooze ends before midnight in the app timezone.
+
 ## Security
 
 - HTML mail is sanitised and rendered in a sandboxed frame without scripts; remote images load

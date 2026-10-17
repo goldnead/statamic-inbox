@@ -120,11 +120,11 @@ class ServiceProvider extends AddonServiceProvider
     public function registerNavigation(): void
     {
         Nav::extend(function ($nav): void {
-            $unread = $this->unreadCount();
+            $unread = static::unreadCount();
 
             // `mail-inbox-content`: core's set has no `mail-inbox`, and an
             // unknown name renders an empty square without a warning.
-            $nav->create($unread > 0 ? __('Postfach').' ('.$unread.')' : __('Postfach'))
+            $nav->create(static::navLabel())
                 ->section('Tools')
                 ->route('inbox.index')
                 ->icon('mail-inbox-content')
@@ -137,8 +137,19 @@ class ServiceProvider extends AddonServiceProvider
         });
     }
 
+    /**
+     * The name of the Postfach nav entry, computed in one place. Settings
+     * reads it too (`settingsNavParent()`), so both always agree.
+     */
+    public static function navLabel(): string
+    {
+        $unread = static::unreadCount();
+
+        return $unread > 0 ? __('Postfach').' ('.$unread.')' : __('Postfach');
+    }
+
     /** Never throws: a nav that 500s takes the whole CP with it. */
-    protected function unreadCount(): int
+    public static function unreadCount(): int
     {
         try {
             return Schema::hasTable('inbox_conversations')

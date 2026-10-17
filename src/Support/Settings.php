@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicInbox\Support;
 
 use Goldnead\BrandContext\Contracts\ProvidesSettings;
+use Goldnead\StatamicInbox\ServiceProvider;
 
 /**
  * What an operator may change for the inbox from the Control Panel, per brand.
@@ -36,12 +37,13 @@ class Settings implements ProvidesSettings
      * Unter welchem Eintrag der eigenen CP-Navigation der Unterpunkt "Settings"
      * hängt: [Sektion, Name], exakt wie in Nav::extend. Optional, gelesen von
      * der Einstellungs-Schicht in statamic-brand-context (ab 1.16).
+     * Der Name kommt aus derselben Stelle wie der Nav-Eintrag selbst, inkl. Zähler.
      *
      * @return array{0: string, 1: string}
      */
     public static function settingsNavParent(): array
     {
-        return ['Tools', __('Postfach')];
+        return ['Tools', ServiceProvider::navLabel()];
     }
 
     /**

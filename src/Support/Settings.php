@@ -33,6 +33,18 @@ class Settings implements ProvidesSettings
     }
 
     /**
+     * Unter welchem Eintrag der eigenen CP-Navigation der Unterpunkt "Settings"
+     * hängt: [Sektion, Name], exakt wie in Nav::extend. Optional, gelesen von
+     * der Einstellungs-Schicht in statamic-brand-context (ab 1.16).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function settingsNavParent(): array
+    {
+        return ['Tools', __('Postfach')];
+    }
+
+    /**
      * The sidebar entry and tab, read by brand-context 1.15 and later.
      * Distinct from the tools entry "Postfach", so the sidebar does not list
      * "Postfach" twice. Until 25.09.2026 this came from translating the addon

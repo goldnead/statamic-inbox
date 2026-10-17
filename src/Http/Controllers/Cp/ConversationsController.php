@@ -266,6 +266,8 @@ class ConversationsController extends Controller
                 'snoozed_until' => $conversation->snoozed_until?->toIso8601String(),
                 'last_message_at' => $conversation->last_message_at?->toIso8601String(),
             ],
+            // The relation is nullable (orphaned conversation); PHPStan 2 treats the earlier null check as final.
+            // @phpstan-ignore identical.alwaysFalse
             'mailbox' => $conversation->mailbox === null ? null : [
                 ...$conversation->mailbox->only(['id', 'name', 'email']),
                 // The hide dialog names where the mails stay.
@@ -296,6 +298,7 @@ class ConversationsController extends Controller
             'contact' => $contact,
             // The reply form's picker: each with its preview, placeholders
             // filled, and the one a tag rule or the default preselects.
+            // @phpstan-ignore identical.alwaysFalse
             'signatures' => $conversation->mailbox === null ? [] : collect($conversation->mailbox->signatureList())
                 ->map(fn (array $s) => [
                     'id' => $s['id'],

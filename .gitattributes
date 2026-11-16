@@ -21,3 +21,6 @@
 
 # Keep: /dist (the built bundle consumers actually load), /config, /database,
 # /lang, /resources/views, /routes, /src, README.md, CHANGELOG.md, LICENSE.md.
+
+# Internal listing files: not needed by installing sites.
+/art                export-ignore

@@ -7,6 +7,7 @@ use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Contracts\TransportFactory;
 use Goldnead\StatamicInbox\Events\InboxMessageSent;
 use Goldnead\StatamicInbox\Models\Attachment;
+use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Support\Redactor;
 use Illuminate\Bus\Queueable;
@@ -40,6 +41,9 @@ class SendReply implements ShouldQueue
     /** Sending twice is worse than not sending: no automatic retries. */
     public int $tries = 1;
 
+    /** Set once the transport accepted the mail. */
+    protected bool $delivered = false;
+
     public function __construct(public int $messageId) {}
 
     public function handle(TransportFactory $transports, MailboxClientFactory $clients): void
@@ -60,11 +64,15 @@ class SendReply implements ShouldQueue
             $email = $this->email($message);
             $sent = $transports->for($mailbox)->send($email);
         } catch (Throwable $e) {
-            $error = Redactor::message($e, $mailbox);
+            $error = $this->describe($e, $mailbox);
             $message->forceFill(['send_error' => mb_substr($error, 0, 2000)])->save();
 
             throw new SendFailed($error);
         }
+
+        // From here the mail is out: a later failure (a listener, a timeout)
+        // must not stamp an error on a delivered reply.
+        $this->delivered = true;
 
         $message->forceFill(['send_error' => null, 'sent_at' => Carbon::now()])->save();
 
@@ -96,9 +104,19 @@ class SendReply implements ShouldQueue
     {
         $message = Message::query()->acrossBrands()->find($this->messageId);
 
-        if ($message !== null && $message->send_error === null && $message->sent_at !== null) {
-            $message->forceFill(['send_error' => mb_substr(Redactor::message($e, $message->mailbox), 0, 2000)])->save();
+        // After SendFailed the reason is already on the message; a delivered
+        // reply is never marked.
+        if ($message === null || $this->delivered || $e instanceof SendFailed) {
+            return;
         }
+
+        $message->forceFill(['send_error' => mb_substr($this->describe($e, $message->mailbox), 0, 2000)])->save();
+    }
+
+    /** The reason, with the password masked; a mailbox that is gone cannot mask, so it is not asked. */
+    protected function describe(Throwable $e, ?Mailbox $mailbox): string
+    {
+        return $mailbox === null ? $e->getMessage() : Redactor::message($e, $mailbox);
     }
 
     protected function email(Message $message): Email

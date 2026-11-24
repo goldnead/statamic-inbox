@@ -256,6 +256,25 @@ it('leaves the reason on the message when the job fails outside the send', funct
     expect($out->fresh()->send_error)->toContain('worker killed');
 });
 
+it('does not mark a delivered reply as failed when something throws after the send', function () {
+    $conversation = threadWithAnna($this->imap, inboxMailbox());
+    $out = app(ReplySender::class)->send($conversation, 'Hallo.');
+    $out->forceFill(['send_error' => null])->save();
+
+    Event::listen(InboxMessageSent::class, fn () => throw new RuntimeException('listener broke'));
+
+    $job = new SendReply($out->id);
+
+    try {
+        app()->call([$job, 'handle']);
+        $this->fail('The listener should have thrown.');
+    } catch (RuntimeException $e) {
+        $job->failed($e);
+    }
+
+    expect($out->fresh()->send_error)->toBeNull();
+});
+
 it('records the error when the reply cannot be built, instead of leaving it looking sent', function () {
     $mailbox = inboxMailbox();
     $conversation = threadWithAnna($this->imap, $mailbox);

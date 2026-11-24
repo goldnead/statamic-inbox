@@ -52,9 +52,12 @@ class SendReply implements ShouldQueue
     protected function send(Message $message, TransportFactory $transports, MailboxClientFactory $clients): void
     {
         $mailbox = $message->mailbox;
-        $email = $this->email($message);
 
+        // Building the mail is part of sending: an address that is not one or
+        // an attachment that is gone from the disk must leave `send_error` on
+        // the message, not a reply that looks sent.
         try {
+            $email = $this->email($message);
             $sent = $transports->for($mailbox)->send($email);
         } catch (Throwable $e) {
             $error = Redactor::message($e, $mailbox);
@@ -83,6 +86,19 @@ class SendReply implements ShouldQueue
         }
 
         event(new InboxMessageSent($message));
+    }
+
+    /**
+     * A job that dies outside the send itself (queue timeout, worker killed
+     * after the message was stored) still leaves the reason on the message.
+     */
+    public function failed(Throwable $e): void
+    {
+        $message = Message::query()->acrossBrands()->find($this->messageId);
+
+        if ($message !== null && $message->send_error === null && $message->sent_at !== null) {
+            $message->forceFill(['send_error' => mb_substr(Redactor::message($e, $message->mailbox), 0, 2000)])->save();
+        }
     }
 
     protected function email(Message $message): Email
@@ -120,7 +136,15 @@ class SendReply implements ShouldQueue
 
         foreach ($message->attachments()->get() as $attachment) {
             /** @var Attachment $attachment */
-            $email->attach((string) $disk->get($attachment->path), $attachment->filename, $attachment->mime);
+            $body = $disk->get($attachment->path);
+
+            // A missing file is not an empty attachment: the customer would get
+            // a 0-byte "contract.pdf" and nobody would know.
+            if ($body === null || $body === false) {
+                throw new \RuntimeException("Attachment {$attachment->filename} is missing on the inbox disk.");
+            }
+
+            $email->attach($body, $attachment->filename, $attachment->mime);
         }
 
         return $email;

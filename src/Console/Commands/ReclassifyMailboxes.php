@@ -68,6 +68,8 @@ class ReclassifyMailboxes extends Command
             ->orderBy('id')
             ->get();
 
+        $failed = false;
+
         foreach ($mailboxes as $mailbox) {
             if ($this->option('reconsider-skipped')) {
                 $counts = BrandContext::runFor((int) $mailbox->brand_id, fn () => $this->reconsider(
@@ -79,6 +81,9 @@ class ReclassifyMailboxes extends Command
                 $this->line($dry ? "  to import: {$counts['import']}" : "  imported: {$counts['imported']}");
                 $this->line("  still skipped: {$counts['still']}");
                 $this->line("  not found on the server: {$counts['not_found']}");
+                $this->line("  Errors (IMAP or processing): {$counts['errors']}");
+
+                $failed = $failed || $counts['errors'] > 0;
 
                 continue;
             }
@@ -99,7 +104,7 @@ class ReclassifyMailboxes extends Command
             $this->line("  unreadable, left as they are: {$counts['unreadable']}");
         }
 
-        return self::SUCCESS;
+        return $failed ? self::FAILURE : self::SUCCESS;
     }
 
     /** @return array<string, int> */
@@ -265,7 +270,7 @@ class ReclassifyMailboxes extends Command
      */
     protected function reconsider(Mailbox $mailbox, bool $dry, MailboxClientFactory $clients, MessageParser $parser, MailboxFetcher $fetcher): array
     {
-        $counts = array_fill_keys(['checked', 'import', 'imported', 'still', 'not_found'], 0);
+        $counts = array_fill_keys(['checked', 'import', 'imported', 'still', 'not_found', 'errors'], 0);
         $client = null;
         $allMail = false;
 
@@ -278,8 +283,11 @@ class ReclassifyMailboxes extends Command
                 $client ??= $clients->for($mailbox);
                 $found = $this->locate($client, $mailbox, $record, $parser, $allMail);
             } catch (Throwable $e) {
+                // The server failed, so the mail may well be there: not "not found".
                 $this->warn("  skip record {$record->id}: ".Redactor::message($e, $mailbox));
-                $found = null;
+                $counts['errors']++;
+
+                continue;
             }
 
             if ($found === null) {
@@ -297,7 +305,7 @@ class ReclassifyMailboxes extends Command
                 $outcome = $fetcher->reconsider($mailbox, $raw, $folder, $uid, $sent, $dry);
             } catch (Throwable $e) {
                 $this->warn("  skip record {$record->id}: ".Redactor::message($e, $mailbox));
-                $counts['not_found']++;
+                $counts['errors']++;
 
                 continue;
             }

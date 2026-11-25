@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicInbox\Parsing;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Log;
 use ZBateson\MailMimeParser\Header\AddressHeader;
 use ZBateson\MailMimeParser\Header\DateHeader;
 use ZBateson\MailMimeParser\Header\IdHeader;
@@ -182,6 +183,13 @@ class MessageParser
             $content = $part->getBinaryContentStream()?->getContents();
 
             if ($content === null) {
+                // Still skipped, the mail itself arrives; but not without a trace.
+                // Only the length of the name and the Message-ID, never content.
+                Log::warning('inbox: attachment without content skipped.', [
+                    'message_id' => $message->getHeaderValue('Message-ID'),
+                    'filename_length' => strlen((string) $part->getFilename()),
+                ]);
+
                 continue;
             }
 

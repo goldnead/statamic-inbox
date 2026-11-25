@@ -6,6 +6,7 @@ use Goldnead\StatamicInbox\Integrations\LeadHubContacts;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Message;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -54,6 +55,8 @@ class DraftSuggester
                     'messages' => [['role' => 'user', 'content' => $this->prompt($conversation, $instruction)]],
                 ]);
         } catch (Throwable $e) {
+            Log::warning('inbox: the AI could not be reached for a draft.', ['exception' => $e::class]);
+
             throw new DraftUnavailable(__('The AI could not be reached.'));
         }
 

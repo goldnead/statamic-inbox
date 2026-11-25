@@ -18,6 +18,7 @@ use Goldnead\StatamicInbox\Support\HostGuard;
 use Goldnead\StatamicInbox\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Translation\Translator;
 use Statamic\Facades\CP\Nav;
@@ -156,7 +157,9 @@ class ServiceProvider extends AddonServiceProvider
                 // Only relevant ones: first contacts have their own count on the "Neu" tab.
                 ? ConversationQuery::unread(Conversation::query())->count()
                 : 0;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('inbox: the unread count for the navigation failed, it shows none.', ['exception' => $e::class]);
+
             return 0;
         }
     }

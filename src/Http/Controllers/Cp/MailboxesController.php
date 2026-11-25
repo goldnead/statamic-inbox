@@ -199,7 +199,7 @@ class MailboxesController extends Controller
         $hostsChanged = $this->changed($mailbox, $data, ['imap_host', 'smtp_host']);
         // An empty folder means INBOX, on both sides of the comparison.
         $folderChanged = array_key_exists('inbox_folder', $data)
-            && trim((string) ($data['inbox_folder'] ?: 'INBOX')) !== trim((string) ($mailbox->inbox_folder ?: 'INBOX'));
+            && $this->folderKey($data['inbox_folder']) !== $this->folderKey($mailbox->inbox_folder);
 
         $mailbox->fill($data);
 
@@ -473,5 +473,13 @@ class MailboxesController extends Controller
             'has_password' => (string) $mailbox->getRawOriginal('password') !== '',
             'edit_url' => $mailbox->exists ? cp_route('inbox.mailboxes.edit', $mailbox->id) : null,
         ];
+    }
+
+    /** INBOX is case-insensitive in IMAP, every other folder name is not. */
+    protected function folderKey(mixed $folder): string
+    {
+        $folder = trim((string) ($folder ?: 'INBOX'));
+
+        return strcasecmp($folder, 'INBOX') === 0 ? 'INBOX' : $folder;
     }
 }

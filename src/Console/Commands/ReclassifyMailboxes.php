@@ -81,7 +81,7 @@ class ReclassifyMailboxes extends Command
                 $this->line($dry ? "  to import: {$counts['import']}" : "  imported: {$counts['imported']}");
                 $this->line("  still skipped: {$counts['still']}");
                 $this->line("  not found on the server: {$counts['not_found']}");
-                $this->line("  IMAP errors: {$counts['errors']}");
+                $this->line("  Errors (IMAP or processing): {$counts['errors']}");
 
                 $failed = $failed || $counts['errors'] > 0;
 

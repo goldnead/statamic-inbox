@@ -101,7 +101,7 @@ it('counts IMAP errors apart from not found and exits with failure when reconsid
     $this->imap->client($this->mailbox)->failWith(new RuntimeException('Connection refused'));
 
     $this->artisan('inbox:reclassify', ['--mailbox' => $this->mailbox->id, '--reconsider-skipped' => true])
-        ->expectsOutputToContain('IMAP errors: 1')
+        ->expectsOutputToContain('Errors (IMAP or processing): 1')
         ->expectsOutputToContain('not found on the server: 0')
         ->assertFailed();
 

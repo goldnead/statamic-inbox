@@ -9,9 +9,11 @@
 use Goldnead\BrandContext\Contracts\SenderIdentityResolver;
 use Goldnead\StatamicInbox\Events\InboxMessageSent;
 use Goldnead\StatamicInbox\Fetching\MailboxFetcher;
+use Goldnead\StatamicInbox\Models\Attachment;
 use Goldnead\StatamicInbox\Models\Conversation;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Sending\ReplySender;
+use Goldnead\StatamicInbox\Sending\SendReply;
 use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Support\Facades\Event;
 use Symfony\Component\Mailer\Envelope;
@@ -222,4 +224,69 @@ it('keeps the draft text and reports the failure when SMTP refuses', function ()
     expect($failed)->not->toBeNull()
         ->and($failed->send_error)->toContain('Relay access denied')
         ->and($this->imap->client($mailbox)->appended)->toBe([]);
+});
+
+it('records the error when a stored attachment is gone, and sends nothing', function () {
+    $mailbox = inboxMailbox();
+    $conversation = threadWithAnna($this->imap, $mailbox);
+    $out = app(ReplySender::class)->send($conversation, 'Mit Anhang.');
+    expect($this->smtp->transport->messages())->toHaveCount(1);
+
+    // The reply is stored, its attachment file is not on the disk any more.
+    $out->forceFill(['send_error' => null])->save();
+    Attachment::create(['message_id' => $out->id, 'filename' => 'gone.pdf', 'mime' => 'application/pdf', 'size' => 10, 'path' => 'inbox/attachments/'.$out->id.'/gone.pdf']);
+
+    try {
+        SendReply::dispatchSync($out->id);
+    } catch (Throwable) {
+        // The job fails loudly; what matters is the message below.
+    }
+
+    expect($out->fresh()->send_error)->toContain('gone.pdf')
+        ->and($this->smtp->transport->messages())->toHaveCount(1);
+});
+
+it('leaves the reason on the message when the job fails outside the send', function () {
+    $conversation = threadWithAnna($this->imap, inboxMailbox());
+    $out = app(ReplySender::class)->send($conversation, 'Hallo.');
+    $out->forceFill(['send_error' => null])->save();
+
+    (new SendReply($out->id))->failed(new RuntimeException('worker killed'));
+
+    expect($out->fresh()->send_error)->toContain('worker killed');
+});
+
+it('does not mark a delivered reply as failed when something throws after the send', function () {
+    $conversation = threadWithAnna($this->imap, inboxMailbox());
+    $out = app(ReplySender::class)->send($conversation, 'Hallo.');
+    $out->forceFill(['send_error' => null])->save();
+
+    Event::listen(InboxMessageSent::class, fn () => throw new RuntimeException('listener broke'));
+
+    $job = new SendReply($out->id);
+
+    try {
+        app()->call([$job, 'handle']);
+        $this->fail('The listener should have thrown.');
+    } catch (RuntimeException $e) {
+        $job->failed($e);
+    }
+
+    expect($out->fresh()->send_error)->toBeNull();
+});
+
+it('records the error when the reply cannot be built, instead of leaving it looking sent', function () {
+    $mailbox = inboxMailbox();
+    $conversation = threadWithAnna($this->imap, $mailbox);
+    $out = app(ReplySender::class)->send($conversation, 'Hallo.');
+
+    $out->forceFill(['send_error' => null, 'to' => [['email' => 'not an address', 'name' => null]]])->save();
+
+    try {
+        SendReply::dispatchSync($out->id);
+    } catch (Throwable) {
+        // Loud for the queue; the message must carry the reason.
+    }
+
+    expect($out->fresh()->send_error)->not->toBeNull();
 });

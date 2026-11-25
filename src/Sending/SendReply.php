@@ -7,6 +7,7 @@ use Goldnead\StatamicInbox\Contracts\MailboxClientFactory;
 use Goldnead\StatamicInbox\Contracts\TransportFactory;
 use Goldnead\StatamicInbox\Events\InboxMessageSent;
 use Goldnead\StatamicInbox\Models\Attachment;
+use Goldnead\StatamicInbox\Models\Mailbox;
 use Goldnead\StatamicInbox\Models\Message;
 use Goldnead\StatamicInbox\Support\Redactor;
 use Illuminate\Bus\Queueable;
@@ -40,6 +41,9 @@ class SendReply implements ShouldQueue
     /** Sending twice is worse than not sending: no automatic retries. */
     public int $tries = 1;
 
+    /** Set once the transport accepted the mail. */
+    protected bool $delivered = false;
+
     public function __construct(public int $messageId) {}
 
     public function handle(TransportFactory $transports, MailboxClientFactory $clients): void
@@ -52,16 +56,23 @@ class SendReply implements ShouldQueue
     protected function send(Message $message, TransportFactory $transports, MailboxClientFactory $clients): void
     {
         $mailbox = $message->mailbox;
-        $email = $this->email($message);
 
+        // Building the mail is part of sending: an address that is not one or
+        // an attachment that is gone from the disk must leave `send_error` on
+        // the message, not a reply that looks sent.
         try {
+            $email = $this->email($message);
             $sent = $transports->for($mailbox)->send($email);
         } catch (Throwable $e) {
-            $error = Redactor::message($e, $mailbox);
+            $error = $this->describe($e, $mailbox);
             $message->forceFill(['send_error' => mb_substr($error, 0, 2000)])->save();
 
             throw new SendFailed($error);
         }
+
+        // From here the mail is out: a later failure (a listener, a timeout)
+        // must not stamp an error on a delivered reply.
+        $this->delivered = true;
 
         $message->forceFill(['send_error' => null, 'sent_at' => Carbon::now()])->save();
 
@@ -83,6 +94,29 @@ class SendReply implements ShouldQueue
         }
 
         event(new InboxMessageSent($message));
+    }
+
+    /**
+     * A job that dies outside the send itself (queue timeout, worker killed
+     * after the message was stored) still leaves the reason on the message.
+     */
+    public function failed(Throwable $e): void
+    {
+        $message = Message::query()->acrossBrands()->find($this->messageId);
+
+        // After SendFailed the reason is already on the message; a delivered
+        // reply is never marked.
+        if ($message === null || $this->delivered || $e instanceof SendFailed) {
+            return;
+        }
+
+        $message->forceFill(['send_error' => mb_substr($this->describe($e, $message->mailbox), 0, 2000)])->save();
+    }
+
+    /** The reason, with the password masked; a mailbox that is gone cannot mask, so it is not asked. */
+    protected function describe(Throwable $e, ?Mailbox $mailbox): string
+    {
+        return $mailbox === null ? $e->getMessage() : Redactor::message($e, $mailbox);
     }
 
     protected function email(Message $message): Email
@@ -120,7 +154,15 @@ class SendReply implements ShouldQueue
 
         foreach ($message->attachments()->get() as $attachment) {
             /** @var Attachment $attachment */
-            $email->attach((string) $disk->get($attachment->path), $attachment->filename, $attachment->mime);
+            $body = $disk->get($attachment->path);
+
+            // A missing file is not an empty attachment: the customer would get
+            // a 0-byte "contract.pdf" and nobody would know.
+            if ($body === null || $body === false) {
+                throw new \RuntimeException("Attachment {$attachment->filename} is missing on the inbox disk.");
+            }
+
+            $email->attach($body, $attachment->filename, $attachment->mime);
         }
 
         return $email;

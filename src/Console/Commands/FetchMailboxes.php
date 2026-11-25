@@ -31,6 +31,8 @@ class FetchMailboxes extends Command
             ->orderBy('id')
             ->get();
 
+        $failed = false;
+
         foreach ($mailboxes as $mailbox) {
             $lock = Cache::lock('inbox:fetch:'.$mailbox->id, (int) config('inbox.fetch.lock_seconds', 900));
 
@@ -44,6 +46,7 @@ class FetchMailboxes extends Command
                 $count = $fetcher->fetch($mailbox);
                 $this->line("Mailbox {$mailbox->id}: {$count} new.");
             } catch (Throwable $e) {
+                $failed = true;
                 // The fetcher masks the password before its exception leaves it.
                 $this->error("Mailbox {$mailbox->id}: {$e->getMessage()}");
                 // Error, not warning: the whole mailbox is down, nothing arrives.
@@ -56,6 +59,8 @@ class FetchMailboxes extends Command
             }
         }
 
-        return self::SUCCESS;
+        // The other mailboxes were fetched all the same; the exit code tells
+        // the scheduler and the server log that one of them was not.
+        return $failed ? self::FAILURE : self::SUCCESS;
     }
 }

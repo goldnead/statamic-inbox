@@ -197,6 +197,9 @@ class MailboxesController extends Controller
         }
 
         $hostsChanged = $this->changed($mailbox, $data, ['imap_host', 'smtp_host']);
+        // An empty folder means INBOX, on both sides of the comparison.
+        $folderChanged = array_key_exists('inbox_folder', $data)
+            && trim((string) ($data['inbox_folder'] ?: 'INBOX')) !== trim((string) ($mailbox->inbox_folder ?: 'INBOX'));
 
         $mailbox->fill($data);
 
@@ -215,6 +218,11 @@ class MailboxesController extends Controller
             if (! array_key_exists('sent_folder', $data)) {
                 $mailbox->sent_folder = null;
             }
+        }
+
+        if ($folderChanged) {
+            // Another folder: the UIDs of the old one mean nothing in the new one.
+            $mailbox->forceFill(['last_uid_inbox' => 0, 'uidvalidity_inbox' => null]);
         }
 
         $mailbox->save();

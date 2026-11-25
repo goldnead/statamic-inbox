@@ -163,6 +163,12 @@ jobs:
         with:
           node-version: '22'
 
+      # The committed bundle inlines code from @statamic/cms. Without a pin an
+      # unpinned install pulls the latest statamic/cms and the fresh build drifts
+      # from the committed dist. Pin the version the dist was built against.
+      - name: Pin statamic/cms to the dist build version
+        run: composer require "statamic/cms:6.42.0" --no-update --no-interaction
+
       # @statamic/cms resolves from vendor/, so Composer must run first.
       - run: composer update --prefer-dist --no-interaction
 

@@ -31,6 +31,13 @@ class FetchMailboxes extends Command
             ->orderBy('id')
             ->get();
 
+        // A given id that matches no active mailbox is a mistake in the command, not an empty success.
+        if ($this->option('mailbox') !== null && $mailboxes->isEmpty()) {
+            $this->error("No active mailbox with id {$this->option('mailbox')}.");
+
+            return self::FAILURE;
+        }
+
         $failed = false;
 
         foreach ($mailboxes as $mailbox) {
